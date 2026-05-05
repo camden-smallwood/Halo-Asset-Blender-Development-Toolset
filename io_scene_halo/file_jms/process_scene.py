@@ -643,7 +643,8 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
                     for node in material.node_tree.nodes:
                         if node.type == 'TEX_IMAGE':
                             if not node.image == None:
-                                if node.image.source == "FILE" and not node.image.packed_file:
+                                tex = ""
+                                if node.image.source == "FILE" and not node.image.packed_file and not global_functions.string_empty_check(node.image.filepath):
                                     image_filepath = bpy.path.abspath(node.image.filepath)
                                     image_path = image_filepath.rsplit('.', 1)[0]
                                     image_name = bpy.path.basename(image_path)
@@ -654,8 +655,9 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
                                 else:
                                     tex = node.image.name.rsplit('.', 1)[0]
 
-                                texture_path = tex
-                                break
+                                if not global_functions.string_empty_check(tex):
+                                    texture_path = tex
+                                    break
 
         else:
             lod, permutation, region = global_functions.material_definition_parser(variant_name.split(), default_region, default_permutation) 
@@ -666,7 +668,8 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
                     for node in material.node_tree.nodes:
                         if node.type == 'TEX_IMAGE':
                             if not node.image == None:
-                                if node.image.source == "FILE" and not node.image.packed_file:
+                                tex = ""
+                                if node.image.source == "FILE" and not node.image.packed_file and not global_functions.string_empty_check(node.image.filepath):
                                     image_filepath = bpy.path.abspath(node.image.filepath)
                                     image_path = image_filepath.rsplit('.', 1)[0]
                                     image_name = bpy.path.basename(image_path)
@@ -677,8 +680,9 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
                                 else:
                                     tex = node.image.name.rsplit('.', 1)[0]
 
-                                texture_path = tex
-                                break
+                                if not global_functions.string_empty_check(tex):
+                                    texture_path = tex
+                                    break
 
             name = mesh_processing.append_material_symbols(material, game_version, False)
             slot = bpy.data.materials.find(material.name)
