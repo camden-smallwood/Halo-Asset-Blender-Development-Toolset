@@ -361,37 +361,56 @@ def gather_modifers(obj):
 
     return modifier_list
 
-def add_modifier(context, obj, triangulate_faces, edge_split_class, armature):
+def add_modifier(context, obj, triangulate_faces, edge_split_class, union_geo, armature):
     modifier_list = gather_modifers(obj)
+    ob_modifier = None
     if triangulate_faces:
         if not 'TRIANGULATE' in modifier_list:
-            triangulate = obj.modifiers.new("Triangulate", type='TRIANGULATE')
+            ob_modifier = obj.modifiers.new("Triangulate", type='TRIANGULATE')
             if bpy.app.version < (4, 1, 0):
-                triangulate.keep_custom_normals = True
+                ob_modifier.keep_custom_normals = True
 
     if edge_split_class and edge_split_class.is_enabled:
         if not 'EDGE_SPLIT' in modifier_list:
-            edge_split = obj.modifiers.new("EdgeSplit", type='EDGE_SPLIT')
-            edge_split.use_edge_angle = edge_split_class.use_edge_angle
-            edge_split.split_angle = edge_split_class.split_angle
-            edge_split.use_edge_sharp = edge_split_class.use_edge_sharp
+            ob_modifier = obj.modifiers.new("EdgeSplit", type='EDGE_SPLIT')
+            ob_modifier.use_edge_angle = edge_split_class.use_edge_angle
+            ob_modifier.split_angle = edge_split_class.split_angle
+            ob_modifier.use_edge_sharp = edge_split_class.use_edge_sharp
 
         else:
             modifier_idx = modifier_list.index('EDGE_SPLIT')
-            obj.modifiers[modifier_idx].use_edge_angle = edge_split_class.use_edge_angle
-            obj.modifiers[modifier_idx].split_angle = edge_split_class.split_angle
-            obj.modifiers[modifier_idx].use_edge_sharp = edge_split_class.use_edge_sharp
+            ob_modifier = obj.modifiers[modifier_idx]
+            ob_modifier.use_edge_angle = edge_split_class.use_edge_angle
+            ob_modifier.split_angle = edge_split_class.split_angle
+            ob_modifier.use_edge_sharp = edge_split_class.use_edge_sharp
+
+    if union_geo is not None:
+        if not 'BOOLEAN' in modifier_list:
+            ob_modifier = obj.modifiers.new(name="Union",type='BOOLEAN')
+            ob_modifier.operation = 'UNION'
+            ob_modifier.object = union_geo
+            ob_modifier.solver = 'EXACT'
+
+        else:
+            modifier_idx = modifier_list.index('BOOLEAN')
+            ob_modifier = obj.modifiers[modifier_idx]
+            ob_modifier.operation = 'UNION'
+            ob_modifier.object = union_geo
+            ob_modifier.solver = 'EXACT'
 
     if armature:
         if not 'ARMATURE' in modifier_list:
-            armature_modifier = obj.modifiers.new("Armature", type='ARMATURE')
-            armature_modifier.object = armature
+            ob_modifier = obj.modifiers.new("Armature", type='ARMATURE')
+            ob_modifier.object = armature
 
         else:
             modifier_idx = modifier_list.index('ARMATURE')
-            obj.modifiers[modifier_idx].object = armature
+            ob_modifier = obj.modifiers[modifier_idx]
+            ob_modifier.object = armature
 
     context.view_layer.update()
+
+    return ob_modifier
 
 def get_color_version_check(file_type):
     version = 8211
@@ -779,7 +798,7 @@ def generate_mesh_object_retail(asset, object_vertices, object_triangles, object
 
             if not armature == None:
                 object_mesh.parent = armature
-                mesh_processing.add_modifier(context, object_mesh, False, None, armature)
+                mesh_processing.add_modifier(context, object_mesh, False, None, None, armature)
 
     return ob_list
 

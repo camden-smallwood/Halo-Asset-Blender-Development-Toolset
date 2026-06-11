@@ -157,7 +157,7 @@ def process_scene(context, version, game_version, hidden_geo, nonrender_geo, app
                 mesh_processing.vertex_group_clean_normalize(context, obj, limit_value)
 
             if apply_modifiers:
-                mesh_processing.add_modifier(context, obj, triangulate_faces, edge_split, None)
+                mesh_processing.add_modifier(context, obj, triangulate_faces, edge_split, None, None)
 
     depsgraph = context.evaluated_depsgraph_get()
 

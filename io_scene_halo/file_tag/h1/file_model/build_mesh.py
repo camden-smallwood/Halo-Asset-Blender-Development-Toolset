@@ -89,7 +89,7 @@ def build_mesh(mode_asset, geometry, armature, LOD, region_name, permutation_nam
         object_mesh = bpy.data.objects.new(object_name, full_mesh)
         object_mesh.color = (1, 1, 1, 0)
         object_mesh.parent = armature
-        mesh_processing.add_modifier(bpy.context, object_mesh, False, None, armature)
+        mesh_processing.add_modifier(bpy.context, object_mesh, False, None, None, armature)
 
     node_set_0 = []
     node_set_1 = []

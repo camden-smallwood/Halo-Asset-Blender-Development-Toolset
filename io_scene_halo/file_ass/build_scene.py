@@ -405,7 +405,7 @@ def build_scene(context, filepath, report):
                     full_transform = global_transforms[parent_index] @ full_transform
 
                 if len(instance_element.bone_groups) > 0:
-                    mesh_processing.add_modifier(context, instance, False, None, armature)
+                    mesh_processing.add_modifier(context, instance, False, None, None, armature)
 
                 if parent_index in bone_instance_index_list:
                     instance.parent = armature

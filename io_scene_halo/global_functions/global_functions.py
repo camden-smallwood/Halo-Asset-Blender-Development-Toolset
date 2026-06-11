@@ -85,7 +85,8 @@ class BlendScene():
                  point_to_point_list,
                  prismatic_list,
                  bounding_sphere_list,
-                 skylight_list):
+                 skylight_list,
+                 union_geometry_list):
         self.world_node_count = world_node_count
         self.armature_count = armature_count
         self.mesh_frame_count = mesh_frame_count
@@ -113,6 +114,7 @@ class BlendScene():
         self.prismatic_list = prismatic_list
         self.bounding_sphere_list = bounding_sphere_list
         self.skylight_list = skylight_list
+        self.union_geometry_list = union_geometry_list
 
 class EdgeSplit():
     def __init__(self, is_enabled, use_edge_angle, split_angle, use_edge_sharp):

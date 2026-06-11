@@ -26,14 +26,15 @@
 
 import os
 import bpy
+import bmesh
 
-from math import degrees
+from math import degrees, radians
 from .format import JMSAsset
 from random import seed, randint
 from mathutils import Vector, Matrix
 from ..global_functions import mesh_processing, global_functions
 
-def process_scene(context, version, game_version, generate_checksum, fix_rotations, use_maya_sorting, model_type, blend_scene, custom_scale, loop_normals, write_textures):
+def process_scene(context, version, game_version, generate_checksum, fix_rotations, use_maya_sorting, model_type, blend_scene, custom_scale, merge_instances, loop_normals, write_textures):
     JMS = JMSAsset()
     JMS.node_checksum = 0
 
@@ -204,66 +205,268 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
         if model_type == global_functions.ModelTypeEnum.collision:
             geometry_list = blend_scene.collision_geometry_list
 
-        for idx, geometry in enumerate(geometry_list):
-            evaluted_mesh = geometry[0]
-            original_geo = geometry[1]
-            if (4, 1, 0) > bpy.app.version:
-                evaluted_mesh.calc_normals_split()
+        if merge_instances:
+            scene_obs = []
+            bm = bmesh.new()
 
-            vertex_groups = original_geo.vertex_groups.keys()
-            original_geo_matrix = global_functions.get_matrix(original_geo, original_geo, False, blend_scene.armature, joined_list, False, version, "JMS", False, custom_scale, fix_rotations)
-            region_count = len(original_geo.data.region_list)
-            for idx, face in enumerate(evaluted_mesh.polygons):
-                region_index = -1
-                variant_name = ""
-                if not original_geo.data.active_region == -1 and region_count > 0:
-                    region_idx = evaluted_mesh.get_custom_attribute().data[idx].value - 1
-                    if not region_idx == -1 and not region_idx >= region_count:
-                        variant_name = original_geo.data.region_list[region_idx].name
-                        if not variant_name in region_list:
-                            region_list.append(variant_name)
+            base_temp_mesh = bpy.data.meshes.new("temp_mesh")
+            temp_materials = []
+            for idx, geometry in enumerate(geometry_list):
+                base_temp_mesh.clear_geometry()
 
-                        region_index = region_list.index(variant_name)
+                evaluted_mesh = geometry[0]
+                original_geo = geometry[1]
+                if (4, 1, 0) > bpy.app.version:
+                    evaluted_mesh.calc_normals_split()
 
-                if game_version == 'halo1':
+                temp_bm = bmesh.new()
+                temp_bm.from_mesh(evaluted_mesh)
+
+                bmesh.ops.transform(temp_bm, verts=temp_bm.verts, matrix=original_geo.matrix_world)
+
+                material_count = len(original_geo.data.materials)
+                for face in temp_bm.faces:
+                    mat_idx = face.material_index
+                    if mat_idx >= 0 and material_count > mat_idx:
+                        face_material = original_geo.data.materials[mat_idx]
+                        if face_material not in temp_materials:
+                            temp_materials.append(face_material)
+                        
+                        face.material_index = temp_materials.index(face_material)
+
+                temp_bm.to_mesh(base_temp_mesh)
+                temp_bm.free()
+
+                bm.from_mesh(base_temp_mesh)
+
+                original_geo.to_mesh_clear()
+
+            bmesh.ops.triangulate(bm, faces=bm.faces[:])
+            render_indicies = set()
+            for mat_idx, mat in enumerate(temp_materials):
+                symbols_list, processed_name = mesh_processing.gather_symbols("", mat.name, game_version)
+                symbols_list, processed_name = mesh_processing.gather_symbols(symbols_list, reversed(mat.name), game_version)
+                processed_name = "".join(reversed(processed_name))
+  
+                if processed_name.startswith("+"):
+                    render_indicies.add(mat_idx)
+
+                elif "!" in symbols_list or (mat.ass_jms.is_bm and mat.ass_jms.render_only):
+                    render_indicies.add(mat_idx)
+
+                elif "%" in symbols_list or (mat.ass_jms.is_bm and mat.ass_jms.two_sided):
+                    render_indicies.add(mat_idx)
+
+            if len(render_indicies) > 0:
+                render_mesh = bpy.data.meshes.new("render_mesh")
+                render_ob = bpy.data.objects.new("render_ob", render_mesh)
+                bpy.context.collection.objects.link(render_ob)
+
+                render_bm = bmesh.new()
+                vert_map = {}
+                faces_to_remove = []
+                for face in bm.faces:
+                    if face.material_index in render_indicies:
+                        new_verts = []
+                        for vert in face.verts:
+                            if vert not in vert_map:
+                                vert_map[vert] = render_bm.verts.new(vert.co)
+                            new_verts.append(vert_map[vert])
+
+                        new_face = render_bm.faces.new(new_verts)
+                        face_material = temp_materials[face.material_index]
+                        if face_material.name not in render_ob.data.materials.keys():
+                            render_ob.data.materials.append(face_material)
+
+                        new_face.material_index = render_ob.data.materials.keys().index(face_material.name)
+
+                        faces_to_remove.append(face)
+
+                render_bm.verts.ensure_lookup_table()
+                render_bm.faces.ensure_lookup_table()
+
+                bmesh.ops.delete(bm,geom=faces_to_remove, context='FACES')
+
+                render_bm.to_mesh(render_mesh)
+                render_ob.data.update()
+
+                render_bm.free()
+                scene_obs.append(render_ob)
+
+            bm.to_mesh(base_temp_mesh)
+            bm.free()
+            base_ob = bpy.data.objects.new("base_ob", base_temp_mesh)
+            scene_obs.append(base_ob)
+            bpy.context.collection.objects.link(base_ob)
+            for temp_mat in temp_materials:
+                base_ob.data.materials.append(temp_mat)
+
+            for union_geo in blend_scene.union_geometry_list:
+                evaluted_mesh = union_geo[0]
+                original_geo = union_geo[1]
+                if (4, 1, 0) > bpy.app.version:
+                    evaluted_mesh.calc_normals_split()
+
+                temp_mesh = bpy.data.meshes.new("temp_mesh")
+                temp_bm = bmesh.new()
+                temp_bm.from_mesh(evaluted_mesh)
+
+                bmesh.ops.transform(temp_bm, verts=temp_bm.verts, matrix=original_geo.matrix_world)
+
+                material_count = len(original_geo.data.materials)
+                for face in temp_bm.faces:
+                    mat_idx = face.material_index
+                    if mat_idx >= 0 and material_count > mat_idx:
+                        face_material = original_geo.data.materials[mat_idx]
+                        if face_material.name not in base_ob.data.materials.keys():
+                            base_ob.data.materials.append(face_material)
+
+                        face.material_index = base_ob.data.materials.keys().index(face_material.name)
+
+                bmesh.ops.triangulate(temp_bm, faces=temp_bm.faces[:])
+                temp_bm.to_mesh(temp_mesh)
+                temp_bm.free()
+
+                test_union_ob = bpy.data.objects.new("test_union_ob", temp_mesh)
+                bpy.context.collection.objects.link(test_union_ob)
+
+                modifier = mesh_processing.add_modifier(context, base_ob, False, None, test_union_ob, None)
+                bpy.context.view_layer.objects.active = base_ob
+                base_ob.select_set(True)
+
+                bpy.ops.object.modifier_apply(modifier=modifier.name)
+
+                bpy.data.objects.remove(test_union_ob, do_unlink=True)
+                bpy.data.meshes.remove(temp_mesh)
+
+            for result_ob in scene_obs:
+                result_bm = bmesh.new()
+                result_bm.from_mesh(result_ob.data)
+                bmesh.ops.dissolve_degenerate(result_bm, dist=0.0001, edges=result_bm.edges)
+                bmesh.ops.triangulate(result_bm, faces=result_bm.faces[:])
+                result_bm.to_mesh(result_ob.data)
+                result_ob.data.update()
+                result_bm.free()
+
+                result_ob.data.calc_loop_triangles()
+                vertex_groups = result_ob.vertex_groups.keys()
+                original_geo_matrix = global_functions.get_matrix(result_ob, result_ob, False, blend_scene.armature, joined_list, False, version, "JMS", False, custom_scale, fix_rotations)
+                region_count = len(result_ob.data.region_list)
+                for idx, face in enumerate(result_ob.data.loop_triangles):
+                    region_index = -1
                     variant_name = ""
-                    if region_index == -1:
-                        if not default_region in region_list:
-                            region_list.append(default_region)
-                        region_index = region_list.index(default_region)
+                    if not result_ob.data.active_region == -1 and region_count > 0:
+                        region_idx = result_ob.data.get_custom_attribute().data[idx].value - 1
+                        if not region_idx == -1 and not region_idx >= region_count:
+                            variant_name = result_ob.data.region_list[region_idx].name
+                            if not variant_name in region_list:
+                                region_list.append(variant_name)
 
-                material_index = global_functions.get_material(original_geo.material_slots, evaluted_mesh, face, variant_name, material_list)
+                            region_index = region_list.index(variant_name)
 
-                vert_count = len(JMS.vertices)
-                v0 = vert_count
-                v1 = vert_count + 1
-                v2 = vert_count + 2
-                if original_geo_matrix.determinant() < 0.0:
-                    v0 = vert_count + 2
+                    if game_version == 'halo1':
+                        variant_name = ""
+                        if region_index == -1:
+                            if not default_region in region_list:
+                                region_list.append(default_region)
+                            region_index = region_list.index(default_region)
+
+                    material_index = global_functions.get_material(result_ob.material_slots, result_ob.data, face, variant_name, material_list)
+
+                    vert_count = len(JMS.vertices)
+                    v0 = vert_count
                     v1 = vert_count + 1
-                    v2 = vert_count
+                    v2 = vert_count + 2
+                    if original_geo_matrix.determinant() < 0.0:
+                        v0 = vert_count + 2
+                        v1 = vert_count + 1
+                        v2 = vert_count
 
-                JMS.triangles.append(JMSAsset.Triangle(region_index, material_index, v0, v1, v2))
-                for loop_index in face.loop_indices:
-                    point_idx = evaluted_mesh.loops[loop_index].vertex_index
-                    loop_data = evaluted_mesh.loops[loop_index]
-                    vertex_data = evaluted_mesh.vertices[loop_data.vertex_index]
+                    JMS.triangles.append(JMSAsset.Triangle(region_index, material_index, v0, v1, v2))
+                    for loop_index in face.loops:
+                        point_idx = result_ob.data.loops[loop_index].vertex_index
+                        loop_data = result_ob.data.loops[loop_index]
+                        vertex_data = result_ob.data.vertices[loop_data.vertex_index]
 
-                    normal = (original_geo_matrix.to_3x3() @ evaluted_mesh.corner_normals[loop_index].vector).normalized()
-                    if not loop_normals:
-                        normal = (original_geo_matrix.to_3x3() @ vertex_data.normal).normalized()
+                        normal = (original_geo_matrix.to_3x3() @ result_ob.data.corner_normals[loop_index].vector).normalized()
+                        if not loop_normals:
+                            normal = (original_geo_matrix.to_3x3() @ vertex_data.normal).normalized()
 
-                    if normal.length <= 0.0:
-                        normal = (original_geo_matrix.to_3x3() @ face.normal).normalized()
+                        if normal.length <= 0.0:
+                            normal = (original_geo_matrix.to_3x3() @ face.normal).normalized()
 
-                    scaled_translation = mesh_processing.process_mesh_export_vert(vertex_data, "JMS", original_geo_matrix, custom_scale)
-                    uv_set = mesh_processing.process_mesh_export_uv(evaluted_mesh, "JMS", loop_index, version)
-                    color = mesh_processing.process_mesh_export_color(evaluted_mesh, loop_index, point_idx)
-                    node_influence_count, node_set = mesh_processing.process_mesh_export_weights(vertex_data, blend_scene.armature, original_geo, vertex_groups, joined_list, "JMS")
+                        scaled_translation = mesh_processing.process_mesh_export_vert(vertex_data, "JMS", original_geo_matrix, custom_scale)
+                        uv_set = mesh_processing.process_mesh_export_uv(result_ob.data, "JMS", loop_index, version)
+                        color = mesh_processing.process_mesh_export_color(result_ob.data, loop_index, point_idx)
+                        node_influence_count, node_set = mesh_processing.process_mesh_export_weights(vertex_data, blend_scene.armature, result_ob, vertex_groups, joined_list, "JMS")
 
-                    JMS.vertices.append(JMSAsset.Vertex(node_influence_count, node_set, region_index, scaled_translation, normal, color, uv_set))
+                        JMS.vertices.append(JMSAsset.Vertex(node_influence_count, node_set, region_index, scaled_translation, normal, color, uv_set))
 
-            original_geo.to_mesh_clear()
+                result_data = result_ob.data
+                bpy.data.objects.remove(result_ob, do_unlink=True)
+                bpy.data.meshes.remove(result_data)
+
+        else:
+            for idx, geometry in enumerate(geometry_list):
+                evaluted_mesh = geometry[0]
+                original_geo = geometry[1]
+                if (4, 1, 0) > bpy.app.version:
+                    evaluted_mesh.calc_normals_split()
+
+                vertex_groups = original_geo.vertex_groups.keys()
+                original_geo_matrix = global_functions.get_matrix(original_geo, original_geo, False, blend_scene.armature, joined_list, False, version, "JMS", False, custom_scale, fix_rotations)
+                region_count = len(original_geo.data.region_list)
+                for idx, face in enumerate(evaluted_mesh.polygons):
+                    region_index = -1
+                    variant_name = ""
+                    if not original_geo.data.active_region == -1 and region_count > 0:
+                        region_idx = evaluted_mesh.get_custom_attribute().data[idx].value - 1
+                        if not region_idx == -1 and not region_idx >= region_count:
+                            variant_name = original_geo.data.region_list[region_idx].name
+                            if not variant_name in region_list:
+                                region_list.append(variant_name)
+
+                            region_index = region_list.index(variant_name)
+
+                    if game_version == 'halo1':
+                        variant_name = ""
+                        if region_index == -1:
+                            if not default_region in region_list:
+                                region_list.append(default_region)
+                            region_index = region_list.index(default_region)
+
+                    material_index = global_functions.get_material(original_geo.material_slots, evaluted_mesh, face, variant_name, material_list)
+
+                    vert_count = len(JMS.vertices)
+                    v0 = vert_count
+                    v1 = vert_count + 1
+                    v2 = vert_count + 2
+                    if original_geo_matrix.determinant() < 0.0:
+                        v0 = vert_count + 2
+                        v1 = vert_count + 1
+                        v2 = vert_count
+
+                    JMS.triangles.append(JMSAsset.Triangle(region_index, material_index, v0, v1, v2))
+                    for loop_index in face.loop_indices:
+                        point_idx = evaluted_mesh.loops[loop_index].vertex_index
+                        loop_data = evaluted_mesh.loops[loop_index]
+                        vertex_data = evaluted_mesh.vertices[loop_data.vertex_index]
+
+                        normal = (original_geo_matrix.to_3x3() @ evaluted_mesh.corner_normals[loop_index].vector).normalized()
+                        if not loop_normals:
+                            normal = (original_geo_matrix.to_3x3() @ vertex_data.normal).normalized()
+
+                        if normal.length <= 0.0:
+                            normal = (original_geo_matrix.to_3x3() @ face.normal).normalized()
+
+                        scaled_translation = mesh_processing.process_mesh_export_vert(vertex_data, "JMS", original_geo_matrix, custom_scale)
+                        uv_set = mesh_processing.process_mesh_export_uv(evaluted_mesh, "JMS", loop_index, version)
+                        color = mesh_processing.process_mesh_export_color(evaluted_mesh, loop_index, point_idx)
+                        node_influence_count, node_set = mesh_processing.process_mesh_export_weights(vertex_data, blend_scene.armature, original_geo, vertex_groups, joined_list, "JMS")
+
+                        JMS.vertices.append(JMSAsset.Vertex(node_influence_count, node_set, region_index, scaled_translation, normal, color, uv_set))
+
+                original_geo.to_mesh_clear()
 
     if model_type == global_functions.ModelTypeEnum.physics:
         for spheres in blend_scene.sphere_list:

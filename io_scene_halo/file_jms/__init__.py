@@ -185,6 +185,9 @@ class JMS_SceneProps(Panel):
         row.label(text='Use Maya Sorting:')
         row.prop(scene_jms, "use_maya_sorting", text='')
         row = col.row()
+        row.label(text='Merge Instances:')
+        row.prop(scene_jms, "merge_instances", text='')
+        row = col.row()
         row.label(text='Use As Default Export Settings:')
         row.prop(scene_jms, "use_scene_properties", text='')
         if scene_jms.folder_structure == True and not scene_jms.game_title == "halo1":
@@ -353,6 +356,12 @@ class JMS_ScenePropertiesGroup(PropertyGroup):
     use_maya_sorting: BoolProperty(
         name ="Use Maya Sorting",
         description = "Certain models have different checksums due to how the Maya bipeds worked. Try this if the checksum doesn't match as is.",
+        default = False,
+        )
+
+    merge_instances: BoolProperty(
+        name ="Merge Instances",
+        description = "Exporter will first process the geo to combine and then merge instances with The main mesh using the boolean modifier",
         default = False,
         )
 
@@ -538,6 +547,12 @@ class ExportJMS(Operator, ExportHelper):
         description = "Certain models have different checksums due to how the Maya bipeds worked. Try this if the checksum doesn't match as is.",
         default = False,
         )
+    
+    merge_instances: BoolProperty(
+        name ="Merge Instances",
+        description = "Exporter will first process the geo to combine and then merge instances with The main mesh using the boolean modifier",
+        default = False,
+        )
 
     use_scene_properties: BoolProperty(
         name ="Use scene properties",
@@ -637,7 +652,7 @@ class ExportJMS(Operator, ExportHelper):
         scale_value = global_functions.set_scale(self.scale_enum, self.scale_float)
         edge_split = global_functions.EdgeSplit(self.edge_split, self.use_edge_angle, self.split_angle, self.use_edge_sharp)
 
-        return global_functions.run_code("export_jms.write_file(context, self.filepath, self.game_title, jms_version, self.permutation_ce, self.level_of_detail_ce, self.generate_checksum, self.folder_structure, self.write_textures, self.hidden_geo, self.nonrender_geo, self.export_render, self.export_collision, self.export_physics, self.apply_modifiers, self.triangulate_faces, self.loop_normals, self.clean_normalize_weights, edge_split, self.fix_rotations, self.use_maya_sorting, folder_type, scale_value, self.report)")
+        return global_functions.run_code("export_jms.write_file(context, self.filepath, self.game_title, jms_version, self.permutation_ce, self.level_of_detail_ce, self.generate_checksum, self.folder_structure, self.write_textures, self.hidden_geo, self.nonrender_geo, self.export_render, self.export_collision, self.export_physics, self.apply_modifiers, self.triangulate_faces, self.loop_normals, self.clean_normalize_weights, edge_split, self.fix_rotations, self.use_maya_sorting, folder_type, scale_value, self.merge_instances, self.report)")
 
     def draw(self, context):
         scene = context.scene
@@ -669,6 +684,7 @@ class ExportJMS(Operator, ExportHelper):
             self.clean_normalize_weights = scene_jms.clean_normalize_weights
             self.edge_split = scene_jms.edge_split
             self.fix_rotations = scene_jms.fix_rotations
+            self.merge_instances = scene_jms.merge_instances
             self.use_maya_sorting = scene_jms.use_maya_sorting
             self.folder_type = scene_jms.folder_type
             self.use_edge_angle = scene_jms.use_edge_angle
@@ -769,6 +785,10 @@ class ExportJMS(Operator, ExportHelper):
         row.enabled = is_enabled
         row.label(text='Use Maya Sorting:')
         row.prop(self, "use_maya_sorting", text='')
+        row = col.row()
+        row.enabled = is_enabled
+        row.label(text='Merge Instances:')
+        row.prop(self, "merge_instances", text='')
         row = col.row()
         row.label(text='Use Scene Export Settings:')
         row.prop(scene_jms, "use_scene_properties", text='')
