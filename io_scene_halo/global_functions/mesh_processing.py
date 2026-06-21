@@ -990,7 +990,7 @@ def process_mesh_export_uv(evaluated_geo, file_type, loop_index, version):
     for uv_index in range(len(evaluated_geo.uv_layers)):
         evaluated_geo.uv_layers.active = evaluated_geo.uv_layers[uv_index]
         uv = evaluated_geo.uv_layers.active.data[evaluated_geo.loops[loop_index].index].uv
-        uv_set.append(uv)
+        uv_set.append((uv.x, uv.y))
 
     if file_type == 'JMS':
         if not uv_set and version <= 8204:
