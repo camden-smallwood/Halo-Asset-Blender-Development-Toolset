@@ -262,30 +262,30 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
                 render_ob = bpy.data.objects.new("render_ob", render_mesh)
                 bpy.context.collection.objects.link(render_ob)
 
-                render_bm = bmesh.new()
-                vert_map = {}
-                faces_to_remove = []
-                for face in bm.faces:
-                    if face.material_index in render_indicies:
-                        new_verts = []
-                        for vert in face.verts:
-                            if vert not in vert_map:
-                                vert_map[vert] = render_bm.verts.new(vert.co)
-                            new_verts.append(vert_map[vert])
-
-                        new_face = render_bm.faces.new(new_verts)
-                        face_material = temp_materials[face.material_index]
-                        if face_material.name not in render_ob.data.materials.keys():
-                            render_ob.data.materials.append(face_material)
-
-                        new_face.material_index = render_ob.data.materials.keys().index(face_material.name)
-
-                        faces_to_remove.append(face)
+                render_bm = bm.copy()
 
                 render_bm.verts.ensure_lookup_table()
                 render_bm.faces.ensure_lookup_table()
+                bm.verts.ensure_lookup_table()
+                bm.faces.ensure_lookup_table()
 
-                bmesh.ops.delete(bm,geom=faces_to_remove, context='FACES')
+                excluded_render_faces = []
+                excluded_faces = []
+                for face_idx, render_face in enumerate(render_bm.faces):
+                    if render_face.material_index in render_indicies:
+                        render_face_material = temp_materials[render_face.material_index]
+                        if render_face_material.name not in render_ob.data.materials.keys():
+                            render_ob.data.materials.append(render_face_material)
+
+                        render_face.material_index = render_ob.data.materials.keys().index(render_face_material.name)
+
+                        excluded_faces.append(bm.faces[face_idx])
+
+                    else:
+                        excluded_render_faces.append(render_face)
+
+                bmesh.ops.delete(bm, geom=excluded_faces, context='FACES')
+                bmesh.ops.delete(render_bm, geom=excluded_render_faces, context='FACES')
 
                 render_bm.to_mesh(render_mesh)
                 render_ob.data.update()
