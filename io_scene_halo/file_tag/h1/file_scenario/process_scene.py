@@ -170,7 +170,7 @@ def get_palette_index(scnr_dict, tag_path, block_key, field_key):
 
         if palette_index == -1 and not global_functions.string_empty_check(tag_group) and not global_functions.string_empty_check(tag_path):
             tag_ref = {"group name": tag_group, "path": tag_path}
-            block_element = {"name": tag_ref}
+            block_element = {field_key: tag_ref}
             palette_tag_block.append(block_element)
             palette_index = len(palette_tag_block) - 1
 

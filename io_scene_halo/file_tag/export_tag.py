@@ -65,10 +65,10 @@ def write_file(context, file_path, report):
         tag_group = tag_extensions.get(tag_extension)
         tag_ref = {"group name": tag_group, "path": local_path}
 
-        donor_scnr = tag_interface.read_tag(tag_ref, tags_directory, tag_groups, engine_tag, merged_defs)
+        donor_scnr = tag_interface.read_tag(tag_ref, tag_group, tags_directory, tag_groups, engine_tag, merged_defs)
 
     else:
-        report({'ERROR'}, "Invalid tag directory path provided. Check your tag directory settings.")
+        report({'WARNING'}, "No valid donor tag found. Generating empty tag.")
 
     filename_no_ext = file_path.rsplit('.scenario', 1)[0]
     filepath = "%s%s" % (filename_no_ext, "_blender.scenario")
