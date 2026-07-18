@@ -119,7 +119,7 @@ class HaloAddonPrefs(bpy.types.AddonPreferences):
     shader_gen: EnumProperty(
         name="Shader Gen:",
         description="Setting for the shader generator",
-        items=[ ('0', "NONE", "No shaders will be generated during import"),
+        items=[ ('0', "Disabled", "No shaders will be generated during import"),
                 ('1', "Simple", "Only the base map or the first bitmap found will be used"),
                 ('2', "Full", "Shaders will try to match ingame appearnce if supported"),
                ]

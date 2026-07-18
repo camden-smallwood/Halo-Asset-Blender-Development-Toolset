@@ -893,6 +893,16 @@ class ImportJMS(Operator, ImportHelper):
         default = True,
         )
 
+    shader_gen_override: EnumProperty(
+        name="Shader Gen Override:",
+        description="Setting for the shader generator",
+        items=[ ('0', "Use Addon Preferences", "Don't use an override and instead use what the toolset has set"),
+                ('1', "Disabled", "No shaders will be generated during import"),
+                ('2', "Simple", "Only the base map or the first bitmap found will be used"),
+                ('3', "Full", "Shaders will try to match ingame appearnce if supported"),
+               ]
+        )
+
     filter_glob: StringProperty(
         default="*.jms;*.jmp",
         options={'HIDDEN'},
@@ -926,7 +936,14 @@ class ImportJMS(Operator, ImportHelper):
     
     def run_jms_code(self, filepath, context):
         from . import import_jms
-        global_functions.run_code("import_jms.load_file(context, filepath, self.game_title, self.reuse_armature, self.fix_parents, self.fix_rotations, self.empty_markers, self.report)")
+
+        shader_gen_setting = int(self.shader_gen_override)
+        if shader_gen_setting == 0:
+            shader_gen_setting = int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen)
+        else:
+            shader_gen_setting += -1
+        
+        global_functions.run_code("import_jms.load_file(context, filepath, self.game_title, self.reuse_armature, self.fix_parents, self.fix_rotations, self.empty_markers, shader_gen_setting, self.report)")
 
     if (4, 1, 0) <= bpy.app.version:
         def invoke(self, context, event):
@@ -964,6 +981,9 @@ class ImportJMS(Operator, ImportHelper):
         row = col.row()
         row.label(text='Use Empties For Markers:')
         row.prop(self, "empty_markers", text='')
+        row = col.row()
+        row.label(text='Shader Gen Override:')
+        row.prop(self, "shader_gen_override", text='')
 
 if (4, 1, 0) <= bpy.app.version:
     class ImportJMS_FileHandler(FileHandler):

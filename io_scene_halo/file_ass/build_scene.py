@@ -91,7 +91,7 @@ def sort_by_parent(ASS):
 
     return ordered_instances
 
-def build_scene(context, filepath, report):
+def build_scene(context, filepath, shader_gen_override, report):
     ASS = process_file(filepath)
     game_title = global_functions.get_game_title(ASS.version, "ASS")
 
@@ -135,14 +135,14 @@ def build_scene(context, filepath, report):
         if game_title == "halo1":
             shader_ref = shader_processing.find_h1_shader_tag(ASS.filepath, material_name)
             tag_interface.generate_tag_dictionary(game_title, shader_ref, tag_directory, tag_groups, engine_tag, merged_defs, asset_cache)
-            shader_processing.generate_h1_shader(blend_mat, shader_ref, 0, asset_cache, report)
+            shader_processing.generate_h1_shader(shader_gen_override, blend_mat, shader_ref, 0, asset_cache, report)
         elif game_title == "halo2":
             shader_ref = shader_processing.find_h2_shader_tag(ASS.filepath, material_name)
             tag_interface.generate_tag_dictionary(game_title, shader_ref, tag_directory, tag_groups, engine_tag, merged_defs, asset_cache)
-            shader_processing.generate_h2_shader(blend_mat, shader_ref, asset_cache, report)
+            shader_processing.generate_h2_shader(shader_gen_override, blend_mat, shader_ref, asset_cache, report)
         elif game_title == "halo3":
             shader_ref = shader_processing.find_h3_shader_tag(ASS.filepath, material_name)
-            shader_processing.generate_h3_shader(blend_mat, shader_ref, asset_cache, report)
+            shader_processing.generate_h3_shader(shader_gen_override, blend_mat, shader_ref, asset_cache, report)
 
         global_functions.set_ass_material_properties(ass_mat, blend_mat)
         blend_mat.ass_jms.name_override = ass_mat.name

@@ -695,7 +695,7 @@ def get_permutation_slots(model_data, desired_permutation, rng_index, collection
 
     return tuple(permutation_indicies), rng_index
 
-def generate_object_elements(context, level_root, collection_name, scnr_data, asset_cache, fix_rotations, report, random_color_gen):
+def generate_object_elements(context, level_root, collection_name, scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen):
     hide_collection = False
     tag_block = None
     tag_palette = None
@@ -766,7 +766,7 @@ def generate_object_elements(context, level_root, collection_name, scnr_data, as
                         render_tag_ref = asset_cache[palette_asset["Data"]["model"]["group name"]][palette_asset["Data"]["model"]["path"]]
                         mesh_data = render_tag_ref["blender_assets"].get(permutation_indicies)
                         if model_asset is not None and mesh_data is None:
-                            get_geometry_layout(palette_asset["Data"]["model"], asset_cache, None, False, report, True, permutation_indicies)
+                            get_geometry_layout(palette_asset["Data"]["model"], asset_cache, None, False, shader_gen_override, report, True, permutation_indicies)
                             mesh_data = render_tag_ref["blender_assets"].get(permutation_indicies)
 
         tag_name = "NONE"
@@ -837,7 +837,7 @@ def generate_object_elements(context, level_root, collection_name, scnr_data, as
                                     if marker_positions is not None:
                                         light_ob.matrix_basis = marker_positions
 
-def generate_netgame_equipment_elements(context, level_root, scnr_data, asset_cache, fix_rotations, report, random_color_gen):
+def generate_netgame_equipment_elements(context, level_root, scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen):
     asset_collection = global_functions.get_referenced_collection("Netgame Equipment", context.scene.collection, True)
     for element_idx, element in enumerate(scnr_data["netgame equipment"]):
         ob = None
@@ -861,7 +861,7 @@ def generate_netgame_equipment_elements(context, level_root, scnr_data, asset_ca
                     item_data = item_asset["Data"]
                     model_asset = tag_interface.get_disk_asset(item_data["model"]["path"], h1_tag_groups.get(item_data["model"]["group name"]))
                     if not model_asset == None:
-                        get_geometry_layout(item_data["model"], asset_cache, None, False, report, True)
+                        get_geometry_layout(item_data["model"], asset_cache, None, False, shader_gen_override, report, True)
 
         if model_asset:
             mesh_data = asset_cache[item_data["model"]["group name"]][item_data["model"]["path"]]["blender_assets"].get("blender_asset")
@@ -1157,7 +1157,7 @@ def generate_marker_positions(parsed_asset):
 
     return marker_positions
 
-def generate_scenario_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, report):
+def generate_scenario_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, shader_gen_override, report):
     mod2_group = asset_cache.get("mod2")
     if mod2_group is not None:
         for tag_path in asset_cache["mod2"]:
@@ -1182,7 +1182,7 @@ def generate_scenario_scene(context, tag_ref, asset_cache, game_title, fix_rotat
             level_collection = global_functions.get_referenced_collection(c_bsp_name, levels_collection, False)
             clusters_collection = global_functions.get_referenced_collection(c_cluster_name, level_collection, False)
 
-            build_scene_level.build_scene(context, bsp_tag_ref, asset_cache, game_title, fix_rotations, empty_markers, report, level_collection, clusters_collection)
+            build_scene_level.build_scene(context, bsp_tag_ref, asset_cache, game_title, fix_rotations, empty_markers, shader_gen_override, report, level_collection, clusters_collection)
 
     level_root = bpy.data.objects.get("frame_root")
     if level_root == None:
@@ -1261,29 +1261,29 @@ def generate_scenario_scene(context, tag_ref, asset_cache, game_title, fix_rotat
     if len(scnr_data["comments"]) > 0:
         generate_comments(context, level_root, scnr_data, asset_cache)
     if len(scnr_data["scenery"]) > 0:
-        generate_object_elements(context, level_root, "Scenery", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Scenery", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["bipeds"]) > 0:
-        generate_object_elements(context, level_root, "Bipeds", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Bipeds", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["vehicles"]) > 0:
-        generate_object_elements(context, level_root, "Vehicles", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Vehicles", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["equipment"]) > 0:
-        generate_object_elements(context, level_root, "Equipment", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Equipment", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["weapons"]) > 0:
-        generate_object_elements(context, level_root, "Weapons", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Weapons", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["machines"]) > 0:
-        generate_object_elements(context, level_root, "Machines", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Machines", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["controls"]) > 0:
-        generate_object_elements(context, level_root, "Controls", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Controls", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["light fixtures"]) > 0:
-        generate_object_elements(context, level_root, "Light Fixtures", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Light Fixtures", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["sound scenery"]) > 0:
-        generate_object_elements(context, level_root, "Sound Scenery", scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_object_elements(context, level_root, "Sound Scenery", scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["player starting locations"]) > 0:
         generate_empties(context, level_root, "Player Starting Locations", scnr_data, context.scene.collection)
     if len(scnr_data["netgame flags"]) > 0:
         generate_empties(context, level_root, "Netgame Flags", scnr_data, context.scene.collection)
     if len(scnr_data["netgame equipment"]) > 0:
-        generate_netgame_equipment_elements(context, level_root, scnr_data, asset_cache, fix_rotations, report, random_color_gen)
+        generate_netgame_equipment_elements(context, level_root, scnr_data, asset_cache, fix_rotations, shader_gen_override, report, random_color_gen)
     if len(scnr_data["trigger volumes"]) > 0:
         generate_trigger_volumes(context, level_root, scnr_data)
     if len(scnr_data["decals"]) > 0:

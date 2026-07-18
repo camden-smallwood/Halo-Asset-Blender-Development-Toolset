@@ -74,7 +74,7 @@ def generate_tag_skeleton(model_data, game_title, armature, fix_rotations):
 
     bpy.ops.object.mode_set(mode = 'OBJECT')
 
-def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, report):
+def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, shader_gen_override, report):
     if game_title == "halo1":
         tag_groups = tag_common.h1_tag_groups
     elif game_title == "halo2":
@@ -96,14 +96,14 @@ def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_
 
     if game_title == "halo1":
         is_triangle_list = False
-        get_retail_h1_geometry_layout(tag_ref, asset_cache, armature, is_triangle_list, report)
+        get_retail_h1_geometry_layout(tag_ref, asset_cache, armature, is_triangle_list, shader_gen_override, report)
         for region in model_data["regions"]:
             for permutation in region["permutations"]:
                 for local_marker in permutation["markers"]:
                     mesh_processing.generate_marker(context, collection, game_title, None, model_data, region["name"], "", armature, local_marker, fix_rotations, empty_markers, False)
 
     else:
-        get_retail_h2_geometry_layout(tag_ref, asset_cache, armature, report)
+        get_retail_h2_geometry_layout(tag_ref, asset_cache, armature, shader_gen_override, report)
         for marker_group in model_data["marker groups"]:
             for marker in marker_group["markers"]:
                 mesh_processing.generate_marker(context, collection, game_title, None, model_data, "", marker_group["name"], armature, marker, fix_rotations, empty_markers, False)

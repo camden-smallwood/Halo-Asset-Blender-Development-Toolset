@@ -42,7 +42,7 @@ from ..file_tag.tag_interface.tag_definitions import h1, h2
 from ..file_tag.tag_interface import tag_interface, tag_common
 
 
-def load_file(context, file_path, game_title, fix_rotations, empty_markers, report):
+def load_file(context, file_path, game_title, fix_rotations, empty_markers, shader_gen_override, report):
     with open(file_path, 'rb') as input_stream:
         valid_header, tag_group, checksum, engine_tag = tag_interface.check_header(input_stream)
         if valid_header:
@@ -131,7 +131,7 @@ def load_file(context, file_path, game_title, fix_rotations, empty_markers, repo
 
                     input_stream.close()
                     if build_scene:
-                        build_scene.build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, report)
+                        build_scene.build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, shader_gen_override, report)
                     else:
                         report({'ERROR'}, "Tag file has no support. Contact the plugin author if it should.")
 

@@ -104,7 +104,7 @@ def jms_file_check(armature, JMS, report):
         if not name in scene_bone_names:
             report({'WARNING'}, "Node '%s' from JMS skeleton not found in scene skeleton." % name)
 
-def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, report):
+def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report):
     collection = context.collection
     scene = context.scene
     armature = None
@@ -216,7 +216,7 @@ def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix
             if 'collision' in filepath:
                 object_name = '@%s' % object_name
 
-        mesh_processing.generate_mesh_object_retail(JMS, JMS.vertices, JMS.triangles, object_name, collection, game_version, random_color_gen, armature, context, report)
+        mesh_processing.generate_mesh_object_retail(shader_gen_setting, JMS, JMS.vertices, JMS.triangles, object_name, collection, game_version, random_color_gen, armature, context, report)
 
     primitive_shapes = []
     for sphere in JMS.spheres:

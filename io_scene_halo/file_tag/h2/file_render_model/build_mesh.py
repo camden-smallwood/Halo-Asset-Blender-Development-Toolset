@@ -319,7 +319,7 @@ def get_variant_mesh(render_asset, armature, region, permutation, tag_ref, asset
             build_mesh(render_asset, l1_geometry, armature, 'L1', region["name"], permutation["name"], tag_ref, asset_cache, full_mesh, random_color_gen, simple_mesh, shader_collection_dic)
 
 
-def get_geometry_layout(tag_ref, asset_cache, armature, report, simple_mesh=False, variant_element=None):
+def get_geometry_layout(tag_ref, asset_cache, armature, shader_gen_override, report, simple_mesh=False, variant_element=None):
     tag_groups = tag_common.h2_tag_groups
     render_asset = tag_interface.get_disk_asset(tag_ref["path"], tag_groups.get(tag_ref["group name"]))
     render_data = render_asset["Data"]
@@ -389,7 +389,7 @@ def get_geometry_layout(tag_ref, asset_cache, armature, report, simple_mesh=Fals
             mat = SHAD_ASSET["blender_assets"].get(material_name)
             if not mat:
                 mat = bpy.data.materials.new(name=material_name)
-                shader_processing.generate_h2_shader(mat, shader_tag, asset_cache, report)
+                shader_processing.generate_h2_shader(shader_gen_override, mat, shader_tag, asset_cache, report)
                 SHAD_ASSET["blender_assets"][material_name] = mat
 
         else:

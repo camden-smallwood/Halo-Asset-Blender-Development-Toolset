@@ -32,7 +32,7 @@ from .build_scene_retail import build_scene_retail
 from .process_file_retail import process_file_retail
 from ..global_functions import mesh_processing, global_functions
 
-def load_file(context, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, report):
+def load_file(context, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report):
     default_region = mesh_processing.get_default_region_permutation_name(game_version)
     default_permutation = mesh_processing.get_default_region_permutation_name(game_version)
     if not isinstance(filepath, TextIOWrapper):
@@ -45,7 +45,7 @@ def load_file(context, filepath, game_version, reuse_armature, fix_parents, fix_
 
     JMS = JMSAsset(filepath)
     JMS = process_file_retail(JMS, game_version, extension, retail_version_list, default_region, default_permutation)
-    build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, report)
+    build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report)
 
     return {'FINISHED'}
 

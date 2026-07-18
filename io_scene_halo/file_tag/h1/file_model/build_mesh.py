@@ -286,7 +286,7 @@ def build_mesh(mode_asset, geometry, armature, LOD, region_name, permutation_nam
     if (4, 1, 0) > bpy.app.version:
         full_mesh.use_auto_smooth = True
 
-def get_geometry_layout(tag_ref, asset_cache, armature, is_triangle_list, report, simple_mesh=False, permutation_indicies=None):
+def get_geometry_layout(tag_ref, asset_cache, armature, is_triangle_list, shader_gen_override, report, simple_mesh=False, permutation_indicies=None):
     tag_groups = tag_common.h1_tag_groups
     mode_asset = tag_interface.get_disk_asset(tag_ref["path"], tag_groups.get(tag_ref["group name"]))
     mode_data = mode_asset["Data"]
@@ -309,7 +309,7 @@ def get_geometry_layout(tag_ref, asset_cache, armature, is_triangle_list, report
                     mat = bpy.data.materials.new(name=material_name)
                     SHAD_ASSET["blender_assets"][material_name] = mat
 
-                shader_processing.generate_h1_shader(mat, shad_tag_ref, shader["permutation"], asset_cache, report)
+                shader_processing.generate_h1_shader(shader_gen_override, mat, shad_tag_ref, shader["permutation"], asset_cache, report)
 
     full_mesh = None
     if simple_mesh:

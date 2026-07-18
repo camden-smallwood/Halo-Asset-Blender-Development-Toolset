@@ -258,70 +258,70 @@ class TransparentTemplateEnum(Enum):
     waves = r'shaders\shader_templates\transparent\waves'
     z_only_active_camo = r'shaders\shader_templates\transparent\z_only_active_camo'
 
-def generate_h1_shader(mat, tag_ref, permutation_index, asset_cache, report):
+def generate_h1_shader(shader_gen_setting, mat, tag_ref, permutation_index, asset_cache, report):
     # 0 = Shader generation is disabled
     # 1 = Simple shader generation. Only the base map is generated
     # 2 = Full Shader generation
-    if not int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 0:
+    if not shader_gen_setting == 0:
         tag_groups = tag_common.h1_tag_groups
         shader_asset = tag_interface.get_disk_asset(tag_ref["path"], tag_groups.get(tag_ref["group name"]))
         if not shader_asset == None:
             if shader_asset["Header"]["tag group"] == "senv":
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_environment_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_environment(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "soso":
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_model_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_model(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "schi":
                 # TODO: Needs a proper shader node group
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_chicago_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_chicago(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "scex":
                 # TODO: Needs a proper shader node group
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_chicago_extended_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_chicago_extended(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "sotr":
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_generic_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_generic(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "sgla":
                 # TODO: Needs a proper shader node group
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_glass_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_glass(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "smet":
                 # TODO: Needs a proper shader node group
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_meter_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_meter(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "spla":
                 # TODO: Needs a proper shader node group
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_plasma_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_plasma(mat, shader_asset, permutation_index, asset_cache, report)
 
             elif shader_asset["Header"]["tag group"] == "swat":
                 # TODO: Needs a proper shader node group
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+                if shader_gen_setting == 1:
                     halo_1_shader.generate_shader_transparent_water_simple(mat, shader_asset, permutation_index, asset_cache, report)
                 else:
                     halo_1_shader.generate_shader_transparent_water(mat, shader_asset, permutation_index, asset_cache, report)
@@ -332,17 +332,17 @@ def generate_h1_shader(mat, tag_ref, permutation_index, asset_cache, report):
     else:
         print("Shader generation is disabled. Skipping")
 
-def generate_h2_shader(mat, tag_ref, asset_cache, report):
+def generate_h2_shader(shader_gen_setting, mat, tag_ref, asset_cache, report):
     # 0 = Shader generation is disabled
     # 1 = Simple shader generation. Only the base map is generated
     # 2 = Full Shader generation
-    if not int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 0:
+    if not shader_gen_setting == 0:
         tag_groups = tag_common.h2_tag_groups
         shader_asset = tag_interface.get_disk_asset(tag_ref["path"], tag_groups.get(tag_ref["group name"]))
         if not shader_asset == None:
             if shader_asset["Header"]["tag group"] == "shad":
                 template_asset = tag_interface.get_disk_asset(shader_asset["Data"]["template"]["path"], tag_groups.get(shader_asset["Data"]["template"]["group name"]))
-                if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1 or template_asset is None:
+                if shader_gen_setting == 1 or template_asset is None:
                     halo_2_shader.generate_shader_simple(mat, shader_asset, asset_cache, report)
                 else:
                     halo_2_shader.generate_shader(mat, shader_asset, template_asset, asset_cache, report)
@@ -353,13 +353,13 @@ def generate_h2_shader(mat, tag_ref, asset_cache, report):
     else:
         print("Shader generation is disabled. Skipping")
 
-def generate_h3_shader(mat, shader_path, asset_cache, report):
+def generate_h3_shader(shader_gen_setting, mat, shader_path, asset_cache, report):
     # 0 = Shader generation is disabled
     # 1 = Simple shader generation. Only the base map is generated
     # 2 = Full Shader generation
-    if not int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 0:
+    if not shader_gen_setting == 0:
         if not shader_path == None:
-            if int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen) == 1:
+            if shader_gen_setting == 1:
                 halo_3_shader.generate_h3_shader_simple(mat, shader_path, asset_cache, report)
             else:
                 halo_3_shader.generate_h3_shader_simple(mat, shader_path, asset_cache, report)

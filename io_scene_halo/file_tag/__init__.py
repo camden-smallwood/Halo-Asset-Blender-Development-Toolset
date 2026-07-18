@@ -92,6 +92,16 @@ class ImportTag(Operator, ImportHelper):
         default = True,
         )
 
+    shader_gen_override: EnumProperty(
+        name="Shader Gen Override:",
+        description="Setting for the shader generator",
+        items=[ ('0', "Use Addon Preferences", "Don't use an override and instead use what the toolset has set"),
+                ('1', "Disabled", "No shaders will be generated during import"),
+                ('2', "Simple", "Only the base map or the first bitmap found will be used"),
+                ('3', "Full", "Shaders will try to match ingame appearnce if supported"),
+               ]
+        )
+
     if (4, 1, 0) <= bpy.app.version:
         directory: StringProperty(
             subtype='DIR_PATH', 
@@ -120,7 +130,14 @@ class ImportTag(Operator, ImportHelper):
 
     def run_tag_code(self, filepath, context):
         from ..file_tag import import_tag
-        global_functions.run_code("import_tag.load_file(context, filepath, self.game_title, self.fix_rotations, self.empty_markers, self.report)")
+
+        shader_gen_setting = int(self.shader_gen_override)
+        if shader_gen_setting == 0:
+            shader_gen_setting = int(bpy.context.preferences.addons["io_scene_halo"].preferences.shader_gen)
+        else:
+            shader_gen_setting += -1
+
+        global_functions.run_code("import_tag.load_file(context, filepath, self.game_title, self.fix_rotations, self.empty_markers, self.shader_gen_override, self.report)")
 
     if (4, 1, 0) <= bpy.app.version:
         def invoke(self, context, event):
@@ -152,6 +169,10 @@ class ImportTag(Operator, ImportHelper):
         row = col.row()
         row.label(text='Use Empties For Markers:')
         row.prop(self, "empty_markers", text='')
+
+        row = col.row()
+        row.label(text='Shader Gen Override:')
+        row.prop(self, "shader_gen_override", text='')
 
 if (4, 1, 0) <= bpy.app.version:
     class ImportTag_FileHandler(FileHandler):

@@ -270,7 +270,7 @@ def planes_to_convex_hull_vert_coords(planes, round_adjust=0.000001):
 
     return verts
 
-def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, report, collection_override=None, cluster_collection_override=None):
+def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_markers, shader_gen_override, report, collection_override=None, cluster_collection_override=None):
     if game_title == "halo1":
         tag_groups = tag_common.h1_tag_groups
     elif game_title == "halo2":
@@ -422,7 +422,7 @@ def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_
                                 mat = SHAD_ASSET["blender_assets"].get(material_name)
                                 if not mat:
                                     mat = bpy.data.materials.new(name=material_name)
-                                    shader_processing.generate_h1_shader(mat, shader_tag, permutation, asset_cache, report)
+                                    shader_processing.generate_h1_shader(shader_gen_override, mat, shader_tag, permutation, asset_cache, report)
                                     SHAD_ASSET["blender_assets"][material_name] = mat
 
                             else:
@@ -715,7 +715,7 @@ def build_scene(context, tag_ref, asset_cache, game_title, fix_rotations, empty_
                 mat = SHAD_ASSET["blender_assets"].get(material_name)
                 if not mat:
                     mat = bpy.data.materials.new(name=material_name)
-                    shader_processing.generate_h2_shader(mat, shader_tag, asset_cache, report)
+                    shader_processing.generate_h2_shader(shader_gen_override, mat, shader_tag, asset_cache, report)
                     SHAD_ASSET["blender_assets"][material_name] = mat
   
             else:
