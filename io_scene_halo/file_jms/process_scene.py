@@ -122,6 +122,10 @@ def process_scene(context, version, game_version, generate_checksum, file_checks
             marker_name = marker_name.split('#', 1)[1] #remove marker symbol from name in case someone thinks they still need it here.
 
         region_idx = -1
+        if game_version == 'halo1':
+            if not default_region in region_list:
+                region_list.append(default_region)
+            region_idx = region_list.index(default_region)
 
         parent_idx = global_functions.get_parent(blend_scene.armature, marker, joined_list, 0)
         marker_matrix = global_functions.get_matrix(marker, marker, True, blend_scene.armature, joined_list, False, version, 'JMS', False, custom_scale, fix_rotations, 0)
