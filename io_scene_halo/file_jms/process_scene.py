@@ -34,7 +34,7 @@ from random import seed, randint
 from mathutils import Vector, Matrix
 from ..global_functions import mesh_processing, global_functions
 
-def process_scene(context, version, game_version, generate_checksum, fix_rotations, use_maya_sorting, model_type, blend_scene, custom_scale, merge_instances, loop_normals, write_textures):
+def process_scene(context, version, game_version, generate_checksum, file_checksum, fix_rotations, use_maya_sorting, model_type, blend_scene, custom_scale, merge_instances, loop_normals, write_textures):
     JMS = JMSAsset()
     JMS.node_checksum = 0
 
@@ -100,6 +100,8 @@ def process_scene(context, version, game_version, generate_checksum, fix_rotatio
 
     if generate_checksum:
         JMS.node_checksum = global_functions.node_hierarchy_checksum(JMS.nodes, JMS.nodes[0], JMS.node_checksum)
+    else:
+        JMS.node_checksum = file_checksum
 
     all_marker_list = blend_scene.marker_list
     if model_type == global_functions.ModelTypeEnum.render:

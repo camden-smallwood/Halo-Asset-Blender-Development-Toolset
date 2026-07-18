@@ -50,7 +50,7 @@ def find_valid_armature(context, obj):
 
     return node_list, valid_armature
 
-def process_scene(context, extension, jma_version, game_title, generate_checksum, fix_rotations, use_maya_sorting, scale_value):
+def process_scene(context, extension, jma_version, game_title, generate_checksum, file_checksum, fix_rotations, use_maya_sorting, scale_value):
     JMA = JMAAsset()
     JMA.node_checksum = 0
 
@@ -196,6 +196,8 @@ def process_scene(context, extension, jma_version, game_title, generate_checksum
 
     if generate_checksum and len(JMA.nodes) > 0:
         JMA.node_checksum = global_functions.node_hierarchy_checksum(JMA.nodes, JMA.nodes[0], JMA.node_checksum)
+    else:
+        JMA.node_checksum = file_checksum
 
     action = None
     temp_action = None

@@ -105,6 +105,7 @@ def build_asset(
             permutation_name,
             lod_setting,
             True,
+            0,
             True,
             write_textures,
             JMS_args.hidden_geo,

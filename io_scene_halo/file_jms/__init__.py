@@ -43,6 +43,7 @@ from bpy.props import (
         BoolProperty,
         EnumProperty,
         FloatProperty,
+        IntProperty,
         PointerProperty,
         StringProperty,
         CollectionProperty
@@ -134,6 +135,10 @@ class JMS_SceneProps(Panel):
             row = col.row()
             row.label(text='Generate Checksum:')
             row.prop(scene_jms, "generate_checksum", text='')
+            if not scene_jms.generate_checksum:
+                row = col.row()
+                row.label(text='File Checksum:')
+                row.prop(scene_jms, "file_checksum", text='')
 
         row = col.row()
         row.label(text='Generate Asset Subdirectories:')
@@ -306,6 +311,11 @@ class JMS_ScenePropertiesGroup(PropertyGroup):
         name ="Generate Node Checksum",
         description = "Generates a checksum for the current node skeleton. Defaults to 0 if unchecked",
         default = True,
+        )
+
+    file_checksum: IntProperty(
+        name="File Checksum",
+        description="The checksum that will be used for the file"
         )
 
     folder_structure: BoolProperty(
@@ -497,6 +507,11 @@ class ExportJMS(Operator, ExportHelper):
         default = True,
         )
 
+    file_checksum: IntProperty(
+        name="File Checksum",
+        description="The checksum that will be used for the file"
+        )
+
     folder_structure: BoolProperty(
         name ="Generate Asset Subdirectories",
         description = "Generate folder subdirectories for exported assets",
@@ -652,7 +667,7 @@ class ExportJMS(Operator, ExportHelper):
         scale_value = global_functions.set_scale(self.scale_enum, self.scale_float)
         edge_split = global_functions.EdgeSplit(self.edge_split, self.use_edge_angle, self.split_angle, self.use_edge_sharp)
 
-        return global_functions.run_code("export_jms.write_file(context, self.filepath, self.game_title, jms_version, self.permutation_ce, self.level_of_detail_ce, self.generate_checksum, self.folder_structure, self.write_textures, self.hidden_geo, self.nonrender_geo, self.export_render, self.export_collision, self.export_physics, self.apply_modifiers, self.triangulate_faces, self.loop_normals, self.clean_normalize_weights, edge_split, self.fix_rotations, self.use_maya_sorting, folder_type, scale_value, self.merge_instances, self.report)")
+        return global_functions.run_code("export_jms.write_file(context, self.filepath, self.game_title, jms_version, self.permutation_ce, self.level_of_detail_ce, self.generate_checksum, self.file_checksum, self.folder_structure, self.write_textures, self.hidden_geo, self.nonrender_geo, self.export_render, self.export_collision, self.export_physics, self.apply_modifiers, self.triangulate_faces, self.loop_normals, self.clean_normalize_weights, edge_split, self.fix_rotations, self.use_maya_sorting, folder_type, scale_value, self.merge_instances, self.report)")
 
     def draw(self, context):
         scene = context.scene
@@ -671,6 +686,7 @@ class ExportJMS(Operator, ExportHelper):
             self.permutation_ce = scene_jms.permutation_ce
             self.level_of_detail_ce = scene_jms.level_of_detail_ce
             self.generate_checksum = scene_jms.generate_checksum
+            self.file_checksum = scene_jms.file_checksum
             self.folder_structure = scene_jms.folder_structure
             self.hidden_geo = scene_jms.hidden_geo
             self.nonrender_geo = scene_jms.nonrender_geo
@@ -721,6 +737,11 @@ class ExportJMS(Operator, ExportHelper):
             row.enabled = is_enabled
             row.label(text='Generate Checksum:')
             row.prop(self, "generate_checksum", text='')
+            if not self.generate_checksum:
+                row = col.row()
+                row.enabled = is_enabled
+                row.label(text='File Checksum:')
+                row.prop(self, "file_checksum", text='')
 
         row = col.row()
         row.enabled = is_enabled

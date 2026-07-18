@@ -38,6 +38,7 @@ def write_file(context,
                permutation_ce,
                level_of_detail_ce,
                generate_checksum,
+               file_checksum,
                folder_structure,
                write_textures,
                hidden_geo,
@@ -84,6 +85,7 @@ def write_file(context,
                                   permutation_ce,
                                   level_of_detail_ce,
                                   generate_checksum,
+                                  file_checksum,
                                   folder_structure,
                                   write_textures,
                                   hidden_geo,
@@ -119,6 +121,7 @@ def command_queue(is_jmi,
                   permutation_ce,
                   level_of_detail_ce,
                   generate_checksum,
+                  file_checksum,
                   folder_structure,
                   write_textures,
                   hidden_geo,
@@ -326,17 +329,17 @@ def command_queue(is_jmi,
     if export_render and blend_scene.render_count > 0:
         model_type = ModelTypeEnum.render
 
-        build_asset(context, blend_scene, filepath, jms_version, game_title, generate_checksum, fix_rotations, use_maya_sorting, folder_structure, folder_type, model_type, is_jmi, permutation_ce, level_of_detail_ce, scale_value, merge_instances, loop_normals, write_textures, report)
+        build_asset(context, blend_scene, filepath, jms_version, game_title, generate_checksum, file_checksum, fix_rotations, use_maya_sorting, folder_structure, folder_type, model_type, is_jmi, permutation_ce, level_of_detail_ce, scale_value, merge_instances, loop_normals, write_textures, report)
 
     if export_collision and blend_scene.collision_count > 0:
         model_type = ModelTypeEnum.collision
 
-        build_asset(context, blend_scene, filepath, jms_version, game_title, generate_checksum, fix_rotations, use_maya_sorting, folder_structure, folder_type, model_type, is_jmi, permutation_ce, level_of_detail_ce, scale_value, False, loop_normals, write_textures, report)
+        build_asset(context, blend_scene, filepath, jms_version, game_title, generate_checksum, file_checksum, fix_rotations, use_maya_sorting, folder_structure, folder_type, model_type, is_jmi, permutation_ce, level_of_detail_ce, scale_value, False, loop_normals, write_textures, report)
 
     if export_physics and blend_scene.physics_count > 0:
         model_type = ModelTypeEnum.physics
 
-        build_asset(context, blend_scene, filepath, jms_version, game_title, generate_checksum, fix_rotations, use_maya_sorting, folder_structure, folder_type, model_type, is_jmi, permutation_ce, level_of_detail_ce, scale_value, False, loop_normals, write_textures, report)
+        build_asset(context, blend_scene, filepath, jms_version, game_title, generate_checksum, file_checksum, fix_rotations, use_maya_sorting, folder_structure, folder_type, model_type, is_jmi, permutation_ce, level_of_detail_ce, scale_value, False, loop_normals, write_textures, report)
 
     return {'FINISHED'}
 
