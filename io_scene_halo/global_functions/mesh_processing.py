@@ -28,6 +28,7 @@ import os
 import bpy
 import bmesh
 import copy
+import numpy as np
 
 from math import radians
 from enum import Flag, Enum, auto
@@ -549,26 +550,27 @@ def generate_marker(context, collection, game_title, filepath, ASSET, region_ele
     object_mesh.select_set(False)
     armature.select_set(False)
 
-def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, object_triangles, object_name, collection, game_title, random_color_gen, armature, context, report):
+def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, object_triangles, object_name, collection, game_title, random_color_gen, armature, context, report, progress=None):
     material_count = len(asset.materials)
     group_list = []
+    group_seen = set()
     ob_list = []
     if game_title == "halo1":
         for region in asset.regions:
-            if not region.name in group_list:
+            if not region.name in group_seen:
+                group_seen.add(region.name)
                 group_list.append(region.name)
 
     else:
-        mat_indices = set()
-        for triangle in asset.triangles:
-            mat_index = triangle.material_index
-            group_name = "default default"
-            if mat_index >= 0 and mat_index not in mat_indices:
-                mat_indices.add(mat_index)
-                group_name = global_functions.material_definition_helper(0, asset.materials[mat_index])
-
-            if not group_name in group_list:
+        for mat in asset.materials:
+            group_name = global_functions.material_definition_helper(0, mat)
+            if not group_name in group_seen:
+                group_seen.add(group_name)
                 group_list.append(group_name)
+
+        if not "default default" in group_seen:
+            group_seen.add("default default")
+            group_list.append("default default")
 
 
     shader_refs = []
@@ -610,42 +612,53 @@ def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, obje
             if shader_ref is not None:
                 tag_interface.generate_tag_dictionary(game_title, shader_ref, tag_directory, tag_groups, engine_tag, merged_defs, asset_cache)
 
+    # Pre-bucket triangles by group key in a single pass. Avoids the previous
+    # O(groups x triangles) scan that dominates load time for asset files with
+    # thousands of materials.
+    tri_buckets = {}
+    for triangle in object_triangles:
+        if game_title == "halo1":
+            region_index = triangle.region
+            if region_index >= 0:
+                key = asset.regions[region_index].name
+            else:
+                key = "unnamed"
+
+        else:
+            material_index = triangle.material_index
+            if material_index >= 0:
+                key = global_functions.material_definition_helper(0, asset.materials[material_index])
+            else:
+                key = "default default"
+
+        bucket = tri_buckets.get(key)
+        if bucket is None:
+            bucket = []
+            tri_buckets[key] = bucket
+
+        bucket.append(triangle)
+
+    if progress is not None:
+        progress.phase("build meshes", total=sum(1 for group in group_list if group in tri_buckets))
+
+    groups_done = 0
     for group_element in group_list:
-        vertex_groups = []
         active_region_permutations = []
-        region_tris = []
+        active_region_seen = {}
         vert_map = {}
         region_verts = []
-        for triangle in object_triangles:
-            if game_title == "halo1":
-                region_index = triangle.region
-                region_name = "unnamed"
-                if region_index >= 0:
-                    region_name = asset.regions[region_index].name
+        region_tris = tri_buckets.get(group_element)
 
-                if region_name == group_element:
-                    region_tris.append(triangle)
-
-            else:
-                material_index = triangle.material_index
-                group_name = "default default"
-                if material_index >= 0:
-                    mat = asset.materials[material_index]
-                    group_name = global_functions.material_definition_helper(0, mat)
-
-                if group_name == group_element:
-                    region_tris.append(triangle)
-
-        if len(region_tris) > 0:
+        if region_tris:
+            # Deduplicate shared vertices. A vertex shared by N triangles previously
+            # got pushed N times, and the dict assignment overwrote the earlier index,
+            # leaving ghost entries. Now each unique source vertex maps to one
+            # region_verts entry.
             for region_tri in region_tris:
-                vert_map[region_tri.v0] = len(region_verts)
-                region_verts.append(object_vertices[region_tri.v0])
-
-                vert_map[region_tri.v1] = len(region_verts)
-                region_verts.append(object_vertices[region_tri.v1])
-
-                vert_map[region_tri.v2] = len(region_verts)
-                region_verts.append(object_vertices[region_tri.v2])
+                for vertex_index in (region_tri.v0, region_tri.v1, region_tri.v2):
+                    if not vertex_index in vert_map:
+                        vert_map[vertex_index] = len(region_verts)
+                        region_verts.append(object_vertices[vertex_index])
 
             verts = [vertex.translation for vertex in region_verts]
             vertex_normals = [vertex.normal for vertex in region_verts]
@@ -657,29 +670,35 @@ def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, obje
             object_mesh = bpy.data.objects.new(object_region_name, mesh)
             object_mesh.color = (1, 1, 1, 0)
             ob_list.append(object_mesh)
-            for tri_idx, poly in enumerate(mesh.polygons):
-                poly.use_smooth = True
+            tri_count = len(tris)
+            mesh.polygons.foreach_set("use_smooth", [True] * tri_count)
 
             region_attribute = mesh.get_custom_attribute()
             mesh.normals_split_custom_set_from_vertices(vertex_normals)
             if (4, 1, 0) > bpy.app.version:
                 mesh.use_auto_smooth = True
 
+            # Bucket vertex weights by (node_index, weight) and bulk-add per bucket.
+            # Was previously one bpy .add() call per (vertex, influence), which is
+            # millions of API trips on skinned meshes. With buckets a rigid mesh
+            # collapses to roughly one .add() per bone.
+            weight_buckets = {}
+            color_values = None
+            color_dirty = False
             for vertex_idx, vertex in enumerate(region_verts):
                 for node_values in vertex.node_set:
                     node_index = node_values[0]
                     if node_index == -1:
                         node_index = 0
+
                     node_weight = node_values[1]
-                    if not node_index == -1 and not node_index in vertex_groups:
-                        vertex_groups.append(node_index)
-                        object_mesh.vertex_groups.new(name = asset.nodes[node_index].name)
+                    bucket_key = (node_index, node_weight)
+                    bucket = weight_buckets.get(bucket_key)
+                    if bucket is None:
+                        bucket = []
+                        weight_buckets[bucket_key] = bucket
 
-                    if not node_index == -1:
-                        group_name = asset.nodes[node_index].name
-                        group_index = object_mesh.vertex_groups.keys().index(group_name)
-
-                        object_mesh.vertex_groups[group_index].add([vertex_idx], node_weight, 'ADD')
+                    bucket.append(vertex_idx)
 
                 if not vertex.color == None and game_title == "halo3" and asset.version >= get_color_version_check("JMS"):
                     color_r = vertex.color[0]
@@ -691,11 +710,38 @@ def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, obje
                         color_g = 0.01
                         color_b = 0.0
 
-                    layer_color = mesh.color_attributes.get("color")
-                    if layer_color is None:
-                        layer_color = mesh.color_attributes.new("color", "FLOAT_COLOR", "POINT")
+                    if color_values is None:
+                        color_values = np.zeros((len(region_verts), 4), dtype=np.float32)
 
-                    layer_color.data[vertex_idx].color = [color_r, color_g, color_b, color_a]
+                    color_values[vertex_idx] = (color_r, color_g, color_b, color_a)
+                    color_dirty = True
+
+            if color_dirty:
+                layer_color = mesh.color_attributes.get("color")
+                if layer_color is None:
+                    layer_color = mesh.color_attributes.new("color", "FLOAT_COLOR", "POINT")
+
+                layer_color.data.foreach_set("color", color_values.ravel())
+
+            # Create vertex groups in first-seen node order, then bulk-add weights.
+            vg_by_node = {}
+            for node_index, _ in weight_buckets:
+                if not node_index in vg_by_node:
+                    vg_by_node[node_index] = object_mesh.vertex_groups.new(name = asset.nodes[node_index].name)
+
+            for (node_index, node_weight), idx_list in weight_buckets.items():
+                vg_by_node[node_index].add(idx_list, node_weight, 'ADD')
+
+            # Batch the triangle-level attributes: material_index, region_attribute, UVs.
+            loop_count = tri_count * 3
+            poly_material_indices = np.zeros(tri_count, dtype=np.int32)
+            region_attr_values = np.zeros(tri_count, dtype=np.int32)
+            max_uv_sets = 0
+            for vertex in region_verts:
+                if len(vertex.uv_set) > max_uv_sets:
+                    max_uv_sets = len(vertex.uv_set)
+
+            uv_buffers = [np.zeros((loop_count, 2), dtype=np.float32) for _ in range(max_uv_sets)]
 
             for triangle_idx, triangle in enumerate(region_tris):
                 triangle_material_index = triangle.material_index
@@ -751,8 +797,7 @@ def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, obje
                         object_mesh.data.materials.append(mat)
 
                     mat.diffuse_color = random_color_gen.next()
-                    material_index = object_mesh.data.materials.keys().index(mat.name)
-                    object_mesh.data.polygons[triangle_idx].material_index = material_index
+                    poly_material_indices[triangle_idx] = object_mesh.data.materials.keys().index(mat.name)
 
                 if game_title == "halo1":
                     if asset.version >= 8198:
@@ -772,32 +817,48 @@ def generate_mesh_object_retail(shader_gen_setting, asset, object_vertices, obje
                     else:
                         current_region_permutation = "default default"
 
-                if not current_region_permutation in active_region_permutations:
+                region_index = active_region_seen.get(current_region_permutation)
+                if region_index is None:
+                    region_index = len(active_region_permutations)
                     active_region_permutations.append(current_region_permutation)
+                    active_region_seen[current_region_permutation] = region_index
                     object_mesh.data.region_add(current_region_permutation)
 
-                region_index = active_region_permutations.index(current_region_permutation)
-                region_attribute.data[triangle_idx].value = region_index + 1
+                region_attr_values[triangle_idx] = region_index + 1
 
                 vertex_list = [region_verts[vert_map[triangle.v0]], region_verts[vert_map[triangle.v1]], region_verts[vert_map[triangle.v2]]]
+                base_loop = 3 * triangle_idx
                 for vertex_idx, vertex in enumerate(vertex_list):
-                    loop_index = (3 * triangle_idx) + vertex_idx
+                    loop_index = base_loop + vertex_idx
                     for uv_idx, uv in enumerate(vertex.uv_set):
-                        uv_name = 'UVMap_Render'
-                        if uv_idx > 0:
-                            uv_name = 'UVMap_Render_%s' % uv_idx
+                        uv_buffers[uv_idx][loop_index, 0] = uv[0]
+                        uv_buffers[uv_idx][loop_index, 1] = uv[1]
 
-                        layer_uv = mesh.uv_layers.get(uv_name)
-                        if layer_uv is None:
-                            layer_uv = mesh.uv_layers.new(name=uv_name)
+            mesh.polygons.foreach_set("material_index", poly_material_indices)
+            region_attribute.data.foreach_set("value", region_attr_values)
+            for uv_idx in range(max_uv_sets):
+                uv_name = 'UVMap_Render'
+                if uv_idx > 0:
+                    uv_name = 'UVMap_Render_%s' % uv_idx
 
-                        layer_uv.data[loop_index].uv = (uv[0], uv[1])
+                layer_uv = mesh.uv_layers.get(uv_name)
+                if layer_uv is None:
+                    layer_uv = mesh.uv_layers.new(name=uv_name)
+
+                layer_uv.data.foreach_set("uv", uv_buffers[uv_idx].ravel())
 
             collection.objects.link(object_mesh)
 
             if not armature == None:
                 object_mesh.parent = armature
                 mesh_processing.add_modifier(context, object_mesh, False, None, None, armature)
+
+            if progress is not None:
+                groups_done += 1
+                progress.step(groups_done)
+
+    if progress is not None and groups_done > 0:
+        progress.step(groups_done, force=True)
 
     return ob_list
 
@@ -819,8 +880,8 @@ def generate_mesh_retail(context, asset, object_vertices, object_triangles, obje
 
     vertex_weights_sets = []
     object_data.from_pydata(positions, [], triangles)
-    for poly in object_data.polygons:
-        poly.use_smooth = True
+    tri_count = len(triangles)
+    object_data.polygons.foreach_set("use_smooth", [True] * tri_count)
 
     region_attribute = object_data.get_custom_attribute()
     object_data.normals_split_custom_set_from_vertices(vertex_normals)
@@ -833,6 +894,23 @@ def generate_mesh_retail(context, asset, object_vertices, object_triangles, obje
                 node_set.append((node_index, node_weight))
 
         vertex_weights_sets.append(node_set)
+
+    # Batch the triangle-level attributes: material_index, region_attribute, UVs.
+    # The originals wrote one element at a time and re-resolved the material index,
+    # region index and UV layer on every triangle. Those lookups are linear scans,
+    # so the loop was O(triangles x materials) before.
+    loop_count = tri_count * 3
+    poly_material_indices = np.zeros(tri_count, dtype=np.int32)
+    region_attr_values = np.zeros(tri_count, dtype=np.int32)
+    max_uv_sets = 0
+    for vertex in vertices:
+        if len(vertex.uv_set) > max_uv_sets:
+            max_uv_sets = len(vertex.uv_set)
+
+    uv_buffers = [np.zeros((loop_count, 2), dtype=np.float32) for _ in range(max_uv_sets)]
+    local_mat_index_by_asset_idx = {}
+    region_index_by_name = {}
+    layer_color = None
 
     for triangle_idx, triangle in enumerate(object_triangles):
         triangle_material_index = triangle.material_index
@@ -854,34 +932,36 @@ def generate_mesh_retail(context, asset, object_vertices, object_triangles, obje
             if 0 <= triangle_material_index < material_count:
                 current_variant = ass_mat.variant
                 if not global_functions.string_empty_check(current_variant):
-                    if not current_variant in object_data.region_list.keys():
-                        object_data.region_add(current_variant)
+                    region_index = region_index_by_name.get(current_variant)
+                    if region_index is None:
+                        if not current_variant in object_data.region_list.keys():
+                            object_data.region_add(current_variant)
 
-                    region_index = object_data.region_list.keys().index(current_variant) + 1
-                    region_attribute.data[triangle_idx].value = region_index
+                        region_index = object_data.region_list.keys().index(current_variant) + 1
+                        region_index_by_name[current_variant] = region_index
+
+                    region_attr_values[triangle_idx] = region_index
 
         if 0 <= triangle_material_index < material_count:
             mat = blender_mats[triangle_material_index]
-            if not mat.name in object_data.materials.keys():
-                object_data.materials.append(mat)
+            local_idx = local_mat_index_by_asset_idx.get(triangle_material_index)
+            if local_idx is None:
+                if not mat.name in object_data.materials.keys():
+                    object_data.materials.append(mat)
+
+                local_idx = object_data.materials.keys().index(mat.name)
+                local_mat_index_by_asset_idx[triangle_material_index] = local_idx
 
             mat.diffuse_color = random_color_gen.next()
-            material_index = object_data.materials.keys().index(mat.name)
-            object_data.polygons[triangle_idx].material_index = material_index
+            poly_material_indices[triangle_idx] = local_idx
 
         vertex_list = [object_vertices[triangle.v0], object_vertices[triangle.v1], object_vertices[triangle.v2]]
+        base_loop = 3 * triangle_idx
         for vertex_idx, vertex in enumerate(vertex_list):
-            loop_index = (3 * triangle_idx) + vertex_idx
+            loop_index = base_loop + vertex_idx
             for uv_idx, uv in enumerate(vertex.uv_set):
-                uv_name = 'UVMap_Render'
-                if uv_idx > 0:
-                    uv_name = 'UVMap_Render_%s' % uv_idx
-
-                layer_uv = object_data.uv_layers.get(uv_name)
-                if layer_uv is None:
-                    layer_uv = object_data.uv_layers.new(name=uv_name)
-
-                layer_uv.data[loop_index].uv = (uv[0], uv[1])
+                uv_buffers[uv_idx][loop_index, 0] = uv[0]
+                uv_buffers[uv_idx][loop_index, 1] = uv[1]
 
             if not vertex.color == None and game_title == "halo3" and asset.version >= get_color_version_check("JMS"):
                 color_r = vertex.color[0]
@@ -893,11 +973,25 @@ def generate_mesh_retail(context, asset, object_vertices, object_triangles, obje
                     color_g = 0.01
                     color_b = 0.0
 
-                layer_color = object_data.color_attributes.get("color")
                 if layer_color is None:
-                    layer_color = object_data.color_attributes.new("color", "BYTE_COLOR", "CORNER")
+                    layer_color = object_data.color_attributes.get("color")
+                    if layer_color is None:
+                        layer_color = object_data.color_attributes.new("color", "BYTE_COLOR", "CORNER")
 
                 layer_color.data[loop_index].color = (color_r, color_g, color_b, color_a)
+
+    object_data.polygons.foreach_set("material_index", poly_material_indices)
+    region_attribute.data.foreach_set("value", region_attr_values)
+    for uv_idx in range(max_uv_sets):
+        uv_name = 'UVMap_Render'
+        if uv_idx > 0:
+            uv_name = 'UVMap_Render_%s' % uv_idx
+
+        layer_uv = object_data.uv_layers.get(uv_name)
+        if layer_uv is None:
+            layer_uv = object_data.uv_layers.new(name=uv_name)
+
+        layer_uv.data.foreach_set("uv", uv_buffers[uv_idx].ravel())
 
     return vertex_weights_sets
 

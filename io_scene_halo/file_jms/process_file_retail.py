@@ -27,7 +27,7 @@
 from .format import JMSAsset
 from ..global_functions import global_functions
 
-def process_file_retail(JMS, game_version, extension, version_list, default_region, default_permutation):
+def process_file_retail(JMS, game_version, extension, version_list, default_region, default_permutation, progress=None):
     JMS.version = int(JMS.next())
     JMS.game_version = game_version
     if game_version == 'auto':
@@ -121,12 +121,32 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
             JMS.regions.append(JMSAsset.Region(name))
 
     vertex_count = int(JMS.next())
+    if progress is not None:
+        progress.phase("parse vertices", total=vertex_count)
+
+    # Throttle progress reporting with a power-of-two stride so the loop stays fast.
+    PROGRESS_MASK = 65535
+    # Hoist the loop invariants. These are re-evaluated once per vertex otherwise,
+    # which on a multi-million vertex asset is millions of attribute lookups.
+    is_modern = JMS.version >= 8205
+    is_8197 = JMS.version == 8197
+    is_8204 = JMS.version == 8204
+    is_8204_plus = JMS.version >= 8204
+    has_color = JMS.version >= 8211
+    is_8202_plus = JMS.version >= 8202
+    is_8203_plus = JMS.version >= 8203
+    is_8199_plus = JMS.version >= 8199
+    vertices = JMS.vertices
+    active_regions = JMS.active_regions
     for vertex in range(vertex_count):
+        if progress is not None and (vertex & PROGRESS_MASK) == 0:
+            progress.step(vertex)
+
         node_set = []
         uv_set = []
         region = None
         color = None
-        if JMS.version >= 8205:
+        if is_modern:
             translation = JMS.next_vector()
             normal = JMS.next_vector()
             node_influence_count = int(JMS.next())
@@ -154,17 +174,17 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
                 u = tex_u
                 v = tex_v
                 uv_set.append([u, v])
-            if JMS.version >= 8211:
+            if has_color:
                 color = JMS.next_vector()
 
         else:
             node_influence_count = 0
-            if JMS.version == 8197:
+            if is_8197:
                 region = int(JMS.next())
-                JMS.active_regions.append(region)
+                active_regions.append(region)
 
             node_0_index = int(JMS.next())
-            if JMS.version == 8204:
+            if is_8204:
                 node_0_weight = float(JMS.next())
 
             translation = JMS.next_vector()
@@ -173,20 +193,20 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
             node_1_weight = float(JMS.next())
             node_2_index = -1
             node_3_index = -1
-            if JMS.version == 8204:
+            if is_8204:
                 node_2_index = int(JMS.next())
                 node_2_weight = float(JMS.next())
                 node_3_index = int(JMS.next())
                 node_3_weight = float(JMS.next())
 
-            if JMS.version >= 8204:
+            if is_8204_plus:
                 node_set.append([node_0_index, node_0_weight])
 
             else:
                 node_set.append([node_0_index, 1])
 
             node_set.append([node_1_index, node_1_weight])
-            if JMS.version >= 8204:
+            if is_8204_plus:
                 node_set.append([node_2_index, node_2_weight])
                 node_set.append([node_3_index, node_3_weight])
 
@@ -202,7 +222,7 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
             if not node_3_index == -1:
                 node_influence_count += 1
 
-            if JMS.version >= 8205:
+            if is_modern:
                 uv_count = int(JMS.next())
                 for uv in range(uv_count):
                     tex_u_value   = JMS.next()
@@ -226,7 +246,7 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
             else:
                 tex_0_u_value = JMS.next()
                 tex_0_v_value = JMS.next()
-                if JMS.version >= 8202:
+                if is_8202_plus:
                     tex_1_u_value = JMS.next()
                     tex_1_v_value = JMS.next()
                     tex_2_u_value = JMS.next()
@@ -246,7 +266,7 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
                 except ValueError:
                     tex_0_v = float(tex_0_v_value.rsplit('.', 1)[0])
 
-                if JMS.version >= 8203:
+                if is_8203_plus:
                     try:
                         tex_1_u = float(tex_1_u_value)
 
@@ -283,7 +303,7 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
                     except ValueError:
                         tex_3_v = float(tex_3_v_value.rsplit('.', 1)[0])
 
-                if JMS.version >= 8203:
+                if is_8203_plus:
                     uv_set.append([tex_0_u, tex_0_v])
                     uv_set.append([tex_1_u, tex_1_v])
                     uv_set.append([tex_2_u, tex_2_v])
@@ -293,28 +313,42 @@ def process_file_retail(JMS, game_version, extension, version_list, default_regi
                     uv_set.append([tex_0_u, tex_0_v])
 
             flags = None
-            if JMS.version >= 8199:
+            if is_8199_plus:
                 flags = JMS.skip(1) #Unused int or boolean value. Don't know which but definitely not a float
 
-        JMS.vertices.append(JMSAsset.Vertex(node_influence_count, node_set, region, translation, normal, color, uv_set))
+        vertices.append(JMSAsset.Vertex(node_influence_count, node_set, region, translation, normal, color, uv_set))
+
+    if progress is not None:
+        progress.step(vertex_count, force=True)
 
     triangle_count = int(JMS.next())
+    if progress is not None:
+        progress.phase("parse triangles", total=triangle_count)
+
+    has_region = 8198 <= JMS.version < 8205
+    triangles = JMS.triangles
     for triangle in range(triangle_count):
+        if progress is not None and (triangle & PROGRESS_MASK) == 0:
+            progress.step(triangle)
+
         region = None
-        if JMS.version >= 8198 and JMS.version < 8205:
+        if has_region:
             try:
                 region = int(JMS.next())
 
             except ValueError:
                 region = 0
 
-            JMS.active_regions.append(region)
+            active_regions.append(region)
 
         material_index = int(JMS.next())
         v0 = int(JMS.next())
         v1 = int(JMS.next())
         v2 = int(JMS.next())
-        JMS.triangles.append(JMSAsset.Triangle(region, material_index, v0, v1, v2))
+        triangles.append(JMSAsset.Triangle(region, material_index, v0, v1, v2))
+
+    if progress is not None:
+        progress.step(triangle_count, force=True)
 
     if JMS.version >= 8206:
         sphere_count = int(JMS.next())

@@ -513,13 +513,53 @@ class ImportASS(Operator, ImportHelper):
                ]
         )
 
+    game_title: EnumProperty(
+        name="Game Title:",
+        description="Override the game-title auto-detected from the ASS version",
+        default="auto",
+        items=[ ('auto', "Auto", "Detect from ASS version (default)"),
+                ('halo1', "Halo 1", "Force halo1 (CE / Halo 1 MCC)"),
+                ('halo2', "Halo 2", "Force halo2 (Vista / MCC)"),
+                ('halo3', "Halo 3", "Force halo3 (MCC)"),
+            ]
+        )
+
+    reuse_armature: BoolProperty(
+        name ="Reuse Armature",
+        description = "Reuse a preexisting armature in the scene if every ASS bone-instance name matches one of its bones. Mirrors the JMS importer option",
+        default = True,
+        )
+
+    fix_parents: BoolProperty(
+        name ="Force node parents",
+        description = "Force thigh bones to use pelvis and clavicles to use spine1. Used to match node import behavior used by Halo 2, Halo 3, and Halo 3 ODST",
+        default = True,
+        )
+
+    fix_rotations: BoolProperty(
+        name ="Fix Rotations",
+        description = "Set rotations to match what you would visually see in 3DS Max. Rotates bones by 90 degrees on a local Z axis to match how Blender handles rotations",
+        default = False,
+        )
+
+    generate_skeleton: EnumProperty(
+        name="Generate Skeleton:",
+        description="Whether to convert `b_*` / `frame*` instances into an armature",
+        default="auto",
+        items=[ ('auto', "Auto",
+                 "Heuristic: only build a skeleton when the .ass sits in a `render/` folder and resolves to halo3 — matches the toolset's prior behavior"),
+                ('always', "Always", "Always build a skeleton from bone-prefixed instances"),
+                ('never', "Never", "Skip skeleton generation entirely; bone instances become regular objects"),
+            ]
+        )
+
     filter_glob: StringProperty(
         default="*.ass",
         options={'HIDDEN'},
         )
 
     filepath: StringProperty(
-        subtype='FILE_PATH', 
+        subtype='FILE_PATH',
         options={'SKIP_SAVE'}
         )
 
@@ -532,7 +572,11 @@ class ImportASS(Operator, ImportHelper):
         else:
             shader_gen_setting += -1
 
-        return global_functions.run_code("import_ass.load_file(context, self.filepath, self.shader_gen_override, self.report)")
+        return global_functions.run_code(
+            "import_ass.load_file(context, self.filepath, self.shader_gen_override, "
+            "self.game_title, self.reuse_armature, self.fix_parents, "
+            "self.fix_rotations, self.generate_skeleton, self.report)"
+        )
 
     if (4, 1, 0) <= bpy.app.version:
         def invoke(self, context, event):
@@ -540,6 +584,41 @@ class ImportASS(Operator, ImportHelper):
                 return self.execute(context)
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
+
+    def draw(self, context):
+        layout = self.layout
+
+        box = layout.box()
+        box.label(text="Version:")
+        col = box.column(align=True)
+        row = col.row()
+        row.label(text='Game Title:')
+        row.prop(self, "game_title", text='')
+
+        box = layout.box()
+        box.label(text="Import Options:")
+        col = box.column(align=True)
+
+        row = col.row()
+        row.label(text='Generate Skeleton:')
+        row.prop(self, "generate_skeleton", text='')
+
+        row = col.row()
+        row.label(text='Reuse Armature:')
+        row.prop(self, "reuse_armature", text='')
+
+        if self.game_title in {'auto', 'halo2', 'halo3'}:
+            row = col.row()
+            row.label(text='Force node parents:')
+            row.prop(self, "fix_parents", text='')
+
+        row = col.row()
+        row.label(text='Fix Rotations:')
+        row.prop(self, "fix_rotations", text='')
+
+        row = col.row()
+        row.label(text='Shader Gen Override:')
+        row.prop(self, "shader_gen_override", text='')
 
 if (4, 1, 0) <= bpy.app.version:
     class ImportASS_FileHandler(FileHandler):

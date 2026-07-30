@@ -458,9 +458,9 @@ def build_scene(context, JMA, JMS_A, JMS_B, filepath, game_version, fix_parents,
                 set_parent_id_class(JMA, parent_id_class)
 
             generate_jma_skeleton(JMS_A_nodes, JMS_A, JMS_A_invalid, JMS_B_nodes, JMS_B, JMS_B_invalid, JMA, armature, parent_id_class, fix_rotations, game_version)
-            if not JMS_A_invalid:
+            if JMS_A is not None and not JMS_A_invalid:
                 build_scene_retail(context, JMS_A, filepath, game_version, True, fix_parents, fix_rotations, True, report)
-            if not JMS_B_invalid:
+            if JMS_B is not None and not JMS_B_invalid:
                 build_scene_retail(context, JMS_B, filepath, game_version, True, fix_parents, fix_rotations, True, report)
 
         elif JMS_A:
@@ -470,6 +470,9 @@ def build_scene(context, JMA, JMS_A, JMS_B, filepath, game_version, fix_parents,
             collection.objects.link(armature)
             mesh_processing.select_object(context, armature)
             generate_jms_skeleton(JMS_A_nodes, JMS_A, JMS_B_nodes, JMS_B, JMA, armature, fix_rotations, game_version)
+            build_scene_retail(context, JMS_A, filepath, game_version, True, fix_parents, fix_rotations, True, report)
+            if JMS_B is not None:
+                build_scene_retail(context, JMS_B, filepath, game_version, True, fix_parents, fix_rotations, True, report)
 
         else:
             report({'ERROR'}, "No valid armature detected and animation graph is invalid. Import will now be aborted")

@@ -91,13 +91,63 @@ def sort_by_parent(ASS):
 
     return ordered_instances
 
-def build_scene(context, filepath, shader_gen_override, report):
-    ASS = process_file(filepath)
-    game_title = global_functions.get_game_title(ASS.version, "ASS")
+def compute_ass_bone_distance(bone_idx, ordered_instances, bone_instance_indices, global_transforms):
+    """ASS-shaped mirror of mesh_processing.get_bone_distance.
 
-    generate_skeleton = False
-    if os.path.basename(os.path.dirname(filepath)) == "render" and game_title == "halo3":
+    The JMS importer replaced a hardcoded tail length with a per-bone heuristic:
+    distance to children when the bone has any, distance to parent for leaves,
+    floor of 1.0. The ASS importer was never updated to match. It relies on the
+    ASS file's per-instance local_scale to drive bone length via
+    bone.matrix = full_transform, which gives matching lengths for limb bones
+    (whose scale equals the segment length by coincidence) but not for facial
+    helpers (scale = 1, so they always come out 1 cm regardless of where their
+    parent is).
+
+    Returns the same heuristic distance the JMS path would compute so we can
+    override child_bone.length after the matrix is set.
+    """
+    bone_pos = global_transforms[bone_idx].translation
+    bone_set = set(bone_instance_indices)
+
+    child_distances = []
+    for child_idx, child_inst in enumerate(ordered_instances):
+        if child_inst.parent_id == bone_idx and child_idx in bone_set:
+            child_distances.append((bone_pos - global_transforms[child_idx].translation).length)
+
+    if not child_distances:
+        # Leaf. Fall back to parent distance, mirroring get_bone_distance's leaf
+        # branch. JMS uses world space distances at v >= 8205, ASS version > 8 is
+        # always world space.
+        parent_idx = ordered_instances[bone_idx].parent_id
+        if parent_idx >= 0 and parent_idx in bone_set:
+            bone_distance = (global_transforms[parent_idx].translation - bone_pos).length
+        else:
+            bone_distance = 0.0
+
+    elif len(child_distances) == 1:
+        bone_distance = child_distances[0]
+
+    else:
+        bone_distance = sum(child_distances) / len(child_distances)
+
+    if bone_distance < 1.0:
+        bone_distance = 1.0
+
+    return bone_distance
+
+def build_scene(context, filepath, shader_gen_override, game_title="auto", reuse_armature=True, fix_parents=True, fix_rotations=False, generate_skeleton="auto", report=print):
+    ASS = process_file(filepath)
+    if game_title == "auto" or game_title is None:
+        game_title = global_functions.get_game_title(ASS.version, "ASS")
+
+    # Skeleton generation gate. The legacy heuristic was "file in a render/ subdir
+    # and halo3". Now driven by the operator option.
+    if generate_skeleton == "auto":
+        generate_skeleton = os.path.basename(os.path.dirname(filepath)) == "render" and game_title == "halo3"
+    elif generate_skeleton == "always":
         generate_skeleton = True
+    else:
+        generate_skeleton = False
 
     context.scene.halo.game_title = game_title
 
@@ -161,8 +211,44 @@ def build_scene(context, filepath, shader_gen_override, report):
             if object_index >= 0 and not object_index in bone_object_index_list:
                 bone_object_index_list.append(object_index)
 
+    # Index lookups for the canonical parents the JMS importer's fix_parents
+    # rewrites use. ASS files use the same b_pelvis / b_l_thigh / b_spine1 /
+    # b_l_clavicle naming convention.
+    parent_id_class = global_functions.ParentIDFix() if fix_parents else None
+    if fix_parents:
+        for bone_idx in bone_instance_index_list:
+            name_lower = ordered_instances[bone_idx].name.lower()
+            if 'pelvis' in name_lower:
+                parent_id_class.pelvis = bone_idx
+
+            if 'thigh' in name_lower:
+                if parent_id_class.thigh0 is None:
+                    parent_id_class.thigh0 = bone_idx
+                else:
+                    parent_id_class.thigh1 = bone_idx
+
+            elif 'spine1' in name_lower:
+                parent_id_class.spine1 = bone_idx
+
+            elif 'clavicle' in name_lower:
+                if parent_id_class.clavicle0 is None:
+                    parent_id_class.clavicle0 = bone_idx
+                else:
+                    parent_id_class.clavicle1 = bone_idx
+
     armature = None
-    if len(bone_instance_index_list) > 0:
+    # Scan existing scene armatures for one whose bones cover every ASS bone
+    # instance name. Mirrors the JMS importer.
+    if reuse_armature and bone_instance_index_list:
+        bone_names = {ordered_instances[i].name for i in bone_instance_index_list}
+        for obj in list(context.scene.objects):
+            if obj.type == 'ARMATURE':
+                existing = {b.name for b in obj.data.bones}
+                if bone_names.issubset(existing):
+                    armature = obj
+                    break
+
+    if armature is None and len(bone_instance_index_list) > 0:
         armdata = bpy.data.armatures.new('Armature')
         armature = bpy.data.objects.new('Armature', armdata)
         armature.color = (1, 1, 1, 0)
@@ -356,11 +442,22 @@ def build_scene(context, filepath, shader_gen_override, report):
                 for bone_goup in instance_element.bone_groups:
                     instance.vertex_groups.new(name = ordered_instances[bone_goup].name)
 
+                # Bucket by (group_index, weight) and bulk-add per bucket. Was
+                # previously one bpy .add() call per (vertex, influence), which is
+                # millions of API trips on skinned meshes.
+                weight_buckets = {}
                 for vertex_weights_idx, vertex_weights in enumerate(vertex_weights_set):
                     for node_set in vertex_weights:
-                        group_index = node_set[0]
-                        node_weight = node_set[1]
-                        instance.vertex_groups[group_index].add([vertex_weights_idx], node_weight, 'ADD')
+                        bucket_key = (node_set[0], node_set[1])
+                        bucket = weight_buckets.get(bucket_key)
+                        if bucket is None:
+                            bucket = []
+                            weight_buckets[bucket_key] = bucket
+
+                        bucket.append(vertex_weights_idx)
+
+                for (group_index, node_weight), idx_list in weight_buckets.items():
+                    instance.vertex_groups[group_index].add(idx_list, node_weight, 'ADD')
 
             if xref and instance.type == 'MESH' and not visited_objects[object_index]:
                 visited_objects[object_index] = True
@@ -426,12 +523,39 @@ def build_scene(context, filepath, shader_gen_override, report):
                 bpy.ops.object.mode_set(mode = 'EDIT')
 
                 child_bone = armature.data.edit_bones.get(instance_element.name)
-                if parent_index >= 0 and parent_index in bone_instance_index_list:
-                    instance_name = ordered_instances[parent_index].name
+
+                # thigh -> pelvis and clavicle -> spine1 reparenting, gated on
+                # H2/H3. Same logic as the JMS generate_jms_skeleton, only applied
+                # when the canonical parent indices were all populated, meaning the
+                # skeleton has the expected structure.
+                effective_parent_index = parent_index
+                if fix_parents and parent_id_class is not None and game_title in ("halo2", "halo3"):
+                    name_lower = instance_element.name.lower()
+                    if 'thigh' in name_lower and parent_id_class.pelvis is not None and parent_id_class.thigh0 is not None and parent_id_class.thigh1 is not None:
+                        effective_parent_index = parent_id_class.pelvis
+
+                    elif 'clavicle' in name_lower and parent_id_class.spine1 is not None and parent_id_class.clavicle0 is not None and parent_id_class.clavicle1 is not None:
+                        effective_parent_index = parent_id_class.spine1
+
+                if effective_parent_index >= 0 and effective_parent_index in bone_instance_index_list:
+                    instance_name = ordered_instances[effective_parent_index].name
                     child_bone.parent = armature.data.edit_bones.get(instance_name)
+                    # World space accumulation always uses the original parent's
+                    # chain so the transform stays correct in world space. Only the
+                    # Blender bone parent pointer gets the fix_parents remap.
                     full_transform = global_transforms[parent_index] @ full_transform
 
+                # Post-multiply -90 degrees Z to swap the bone axis convention and
+                # match the 3DS Max visual orientation. Mirrors the JMS importer.
+                if fix_rotations:
+                    full_transform = full_transform @ Matrix.Rotation(radians(-90.0), 4, 'Z')
+
                 child_bone.matrix = full_transform
+                # Override length with the JMS style heuristic so bone display
+                # sizing is consistent across ASS and JMS imports. Without this,
+                # facial leaf bones (scale = 1 in ASS) come out at 1 cm while the
+                # JMS path gives them 10-13 cm.
+                child_bone.length = compute_ass_bone_distance(instance_idx, ordered_instances, bone_instance_index_list, global_transforms)
 
                 bpy.ops.object.mode_set(mode = 'OBJECT')
 

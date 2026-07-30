@@ -31,6 +31,7 @@ from .format import JMSAsset
 from .build_scene_retail import build_scene_retail
 from .process_file_retail import process_file_retail
 from ..global_functions import mesh_processing, global_functions
+from ..global_functions.import_progress import ImportProgress
 
 def load_file(context, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report):
     default_region = mesh_processing.get_default_region_permutation_name(game_version)
@@ -43,9 +44,18 @@ def load_file(context, filepath, game_version, reuse_armature, fix_parents, fix_
 
     retail_version_list = (8197, 8198, 8199, 8200, 8201, 8202, 8203, 8204, 8205, 8206, 8207, 8208, 8209, 8210, 8211, 8212, 8213)
 
-    JMS = JMSAsset(filepath)
-    JMS = process_file_retail(JMS, game_version, extension, retail_version_list, default_region, default_permutation)
-    build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report)
+    wm = getattr(context, "window_manager", None)
+    progress = ImportProgress(wm, label="JMS import")
+    progress.begin()
+    try:
+        progress.phase("read & tokenize")
+        JMS = JMSAsset(filepath)
+        progress.phase("parse")
+        JMS = process_file_retail(JMS, game_version, extension, retail_version_list, default_region, default_permutation, progress=progress)
+        progress.phase("build scene")
+        build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report, progress=progress)
+    finally:
+        progress.end()
 
     return {'FINISHED'}
 

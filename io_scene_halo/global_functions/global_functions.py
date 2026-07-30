@@ -750,19 +750,27 @@ class HaloAsset:
             self.__init_from_textio(file)
 
     def __init_from_textio(self, io):
+        # Hot path: most elements are pure numbers with no `;`. Skip the regex for them —
+        # for large files (millions of elements) this is the difference between minutes
+        # of regex overhead on load and a few seconds.
+        comment_regex = self.__comment_regex
+        elements = self._elements
         for line in io:
             for element in line.strip().split("\t"):
-                if element != '':
-                    comment_match = re.search(self.__comment_regex, element)
-                    if comment_match is None:
-                        self._elements.append(element)
+                if element == '':
+                    continue
+                if ';' not in element:
+                    elements.append(element)
+                    continue
+                comment_match = re.search(comment_regex, element)
+                if comment_match is None:
+                    elements.append(element)
+                else:
+                    processed_element = element[: comment_match.end() - 1]
+                    if processed_element != '':
+                        elements.append(element)
 
-                    else:
-                        processed_element = element[: comment_match.end() - 1]
-                        if processed_element != '':
-                            self._elements.append(element)
-
-                        break # ignore the rest of the line if we found a comment
+                    break # ignore the rest of the line if we found a comment
     def left(self):
         """Returns the number of elements left"""
         if self._index < len(self._elements):
@@ -1363,12 +1371,44 @@ def get_fcurve(fcurves, data_path, index):
             return fc
     return None
 
+def get_action_fcurves(action, ensure=False, id_type='OBJECT'):
+    # Blender 4.4+ moved fcurves into a slot's channelbag (under a layer/strip).
+    # On older Blender versions Action.fcurves still works directly.
+    if action is None:
+        return None
+
+    if hasattr(action, 'fcurves'):
+        return action.fcurves
+
+    if not action.slots:
+        if not ensure:
+            return None
+        action.slots.new(id_type=id_type, name='Legacy Slot')
+    slot = action.slots[0]
+
+    if not action.layers:
+        if not ensure:
+            return None
+        action.layers.new(name='Layer')
+    layer = action.layers[0]
+
+    if not layer.strips:
+        if not ensure:
+            return None
+        layer.strips.new(type='KEYFRAME')
+    strip = layer.strips[0]
+
+    channelbag = strip.channelbag(slot, ensure=ensure)
+    if channelbag is None:
+        return None
+    return channelbag.fcurves
+
 def export_fcurve_data(action, fcurve_dict, armature, node, node_idx, frame, local_matrices):
     if not armature:
         action = None
         fcurves = []
         if node and node.animation_data:
-            action = node.animation_data.action 
+            action = node.animation_data.action
         if action:
             if (5, 0, 0) <= bpy.app.version:
                 if action.slots:
@@ -1532,6 +1572,8 @@ def import_fcurve_data(action, armature, nodes, frames, JMA, fix_rotations, is_i
             'rotation_euler': [get_fcurve(action.fcurves, "rotation_euler", i) or action.fcurves.new(data_path="rotation_euler", index=i) for i in range(3)],
         }
 
+    prev_quats = [None] * len(nodes)
+    prev_eulers = [None] * len(nodes)
     for frame_idx, frame in enumerate(frames):
         absolute_frame = absolute_frames[frame_idx]
         frame_number = frame_idx + 1
@@ -1572,8 +1614,18 @@ def import_fcurve_data(action, armature, nodes, frames, JMA, fix_rotations, is_i
             transform_matrix = local_matrices[node_idx].inverted() @ transform_matrix
 
             loc, rot_quat, scl = transform_matrix.decompose()
+            # Force quaternion hemisphere continuity so fcurve interpolation doesn't snap through identity.
+            prev_quat = prev_quats[node_idx]
+            if prev_quat is not None and prev_quat.dot(rot_quat) < 0.0:
+                rot_quat.negate()
+            prev_quats[node_idx] = rot_quat.copy()
             if rotation_mode != 'QUATERNION':
-                rot_euler = rot_quat.to_euler('XYZ')
+                euler_order = rotation_mode if rotation_mode in {'XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'} else 'XYZ'
+                rot_euler = rot_quat.to_euler(euler_order)
+                prev_euler = prev_eulers[node_idx]
+                if prev_euler is not None:
+                    rot_euler.make_compatible(prev_euler)
+                prev_eulers[node_idx] = rot_euler.copy()
 
             for i in range(3):
                 fcurve_map[node_name]['location'][i].keyframe_points.insert(frame_number, loc[i], options={'FAST'})
@@ -1585,6 +1637,17 @@ def import_fcurve_data(action, armature, nodes, frames, JMA, fix_rotations, is_i
 
             if rotation_mode == 'QUATERNION':
                 fcurve_map[node_name]['rotation_quaternion'][3].keyframe_points.insert(frame_number, rot_quat[3], options={'FAST'})
+
+    # FAST inserts skip auto-handle recalculation. Without this update pass bezier
+    # handles stay in a stale state and the curve interpolates wildly between keyframes.
+    for bone_curves in fcurve_map.values():
+        for path_curves in bone_curves.values():
+            for fc in path_curves.values():
+                fc.update()
+
+    for path_curves in controller_fcurves.values():
+        for fc in path_curves:
+            fc.update()
 
 def get_referenced_collection(collection_name, parent_collection, hide_render=False, hide_viewport=False):
     asset_collection = bpy.data.collections.get(collection_name)

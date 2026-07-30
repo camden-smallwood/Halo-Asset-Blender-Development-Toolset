@@ -37,6 +37,7 @@ from ..global_ui.maze_ui import CharacterFlags
 from ..misc.maze_gen.solve_maze import solve_maze
 from ..misc.maze_gen.generate_maze import generate_maze
 from ..global_functions.mesh_processing import deselect_objects, select_object
+from ..global_functions.global_functions import get_action_fcurves
 from ..file_tag.tag_interface import tag_interface, tag_common
 from ..file_tag.tag_interface.tag_definitions import h1, h2
 
@@ -803,12 +804,23 @@ def generate_intro_cutscene(context, scenario_asset):
     generate_camera_arc(context, armature, context.scene.frame_current, 100, 24, -15, scenario_asset)
     #generate_camera_zoom(context, armature, context.scene.frame_current, 150, 50, True, scenario_asset)
     frames = []
-    action = armature.animation_data.action
-    for fcu in action.fcurves:
-        for keyframe in fcu.keyframe_points:
-            frames.append(keyframe.co[0])
+    try:
+        if armature.animation_data is not None and armature.animation_data.action is not None:
+            fcurves = get_action_fcurves(armature.animation_data.action) or []
+            for fcu in fcurves:
+                for keyframe in fcu.keyframe_points:
+                    frames.append(keyframe.co[0])
 
-    context.scene.frame_end = int(max(frames))
+    except (AttributeError, TypeError):
+        # If we can't read animation data, fall back to a default based on the
+        # camera arc parameters below.
+        pass
+
+    if frames:
+        context.scene.frame_end = int(max(frames))
+    else:
+        # ~125 frames should accommodate two camera arcs with interpolation 25.
+        context.scene.frame_end = 150
 
 def generate_global_scripts(script_dic, player_count):
     gs_key = script_dic["global_scripts"] = {}

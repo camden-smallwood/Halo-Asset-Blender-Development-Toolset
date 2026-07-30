@@ -70,25 +70,34 @@ def generate_jms_skeleton(JMS, armature, parent_id_class, fix_rotations):
     bpy.ops.object.mode_set(mode = 'OBJECT')
 
 def set_parent_id_class(JMS, parent_id_class):
+    # Use first-match for the unique anchors (pelvis, spine1) so
+    # descriptive helper bones like `b_pelvis_armor_flap_helper` or
+    # `b_spine1_twist1` don't override the real anchor. For
+    # thigh/clavicle the existing first/second logic already preserves
+    # the leftmost two matches, but we apply the same "skip if already
+    # set past slot 1" guard so a third helper bone can't displace
+    # them either.
     for idx, jms_node in enumerate(JMS.nodes):
         if 'pelvis' in jms_node.name:
-            parent_id_class.pelvis = idx
+            if parent_id_class.pelvis == None:
+                parent_id_class.pelvis = idx
 
         if 'thigh' in jms_node.name:
             if parent_id_class.thigh0 == None:
                 parent_id_class.thigh0 = idx
 
-            else:
+            elif parent_id_class.thigh1 == None:
                 parent_id_class.thigh1 = idx
 
         elif 'spine1' in jms_node.name:
-            parent_id_class.spine1 = idx
+            if parent_id_class.spine1 == None:
+                parent_id_class.spine1 = idx
 
         elif 'clavicle' in jms_node.name:
             if parent_id_class.clavicle0 == None:
                 parent_id_class.clavicle0 = idx
 
-            else:
+            elif parent_id_class.clavicle1 == None:
                 parent_id_class.clavicle1 = idx
 
 def jms_file_check(armature, JMS, report):
@@ -104,7 +113,7 @@ def jms_file_check(armature, JMS, report):
         if not name in scene_bone_names:
             report({'WARNING'}, "Node '%s' from JMS skeleton not found in scene skeleton." % name)
 
-def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report):
+def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix_parents, fix_rotations, empty_markers, shader_gen_setting, report, progress=None):
     collection = context.collection
     scene = context.scene
     armature = None
@@ -152,24 +161,32 @@ def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix
 
         generate_jms_skeleton(JMS, armature, parent_id_class, fix_rotations)
 
+    # Dedup with a set instead of `list in list` linear scans. The original code
+    # also had a key-order bug (checked [region, permutation] but appended
+    # [permutation, region]) that defeated dedup entirely — every triangle pushed
+    # a new entry, turning the loop into O(n²). Set-based lookup keeps the same
+    # output shape but stays O(n).
+    seen_rp = set()
     for region in JMS.active_regions:
         name = JMS.regions[region].name
         if JMS.game_version == "halo1":
-            if not name in region_permutation_list:
+            if name not in seen_rp:
+                seen_rp.add(name)
                 region_permutation_list.append(name)
 
-    for triangle in JMS.triangles:
-        triangle_material_index = triangle.material_index
-        material = None
-        region = None
-        permutation = None
-        if not triangle_material_index == -1:
-            material = JMS.materials[triangle_material_index]
-            region = material.region
-            permutation = material.permutation
+    if JMS.game_version in ("halo2", "halo3"):
+        for triangle in JMS.triangles:
+            triangle_material_index = triangle.material_index
+            region = None
+            permutation = None
+            if triangle_material_index != -1:
+                material = JMS.materials[triangle_material_index]
+                region = material.region
+                permutation = material.permutation
 
-        if JMS.game_version == "halo2" or JMS.game_version == "halo3":
-            if not [region, permutation] in region_permutation_list:
+            key = (region, permutation)
+            if key not in seen_rp:
+                seen_rp.add(key)
                 region_permutation_list.append([permutation, region])
 
     for marker_obj in JMS.markers:
@@ -216,7 +233,7 @@ def build_scene_retail(context, JMS, filepath, game_version, reuse_armature, fix
             if 'collision' in filepath:
                 object_name = '@%s' % object_name
 
-        mesh_processing.generate_mesh_object_retail(shader_gen_setting, JMS, JMS.vertices, JMS.triangles, object_name, collection, game_version, random_color_gen, armature, context, report)
+        mesh_processing.generate_mesh_object_retail(shader_gen_setting, JMS, JMS.vertices, JMS.triangles, object_name, collection, game_version, random_color_gen, armature, context, report, progress=progress)
 
     primitive_shapes = []
     for sphere in JMS.spheres:
