@@ -6,6 +6,7 @@ on:
       - 5.0-beta
     paths-ignore:
       - '*.md'
+  workflow_dispatch:
 jobs:
   release_package:
     runs-on: ubuntu-latest
